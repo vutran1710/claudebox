@@ -105,10 +105,12 @@ RUN mkdir -p /run/sshd \
 
 # ── Claude skills directory ──
 RUN mkdir -p /root/.claude/skills/agent-browser \
-    && mkdir -p /root/.claude/skills/wormhole
+    && mkdir -p /root/.claude/skills/wormhole \
+    && mkdir -p /root/.claude/skills/vnc
 
 COPY skills/agent-browser/SKILL.md /root/.claude/skills/agent-browser/SKILL.md
 COPY skills/wormhole/SKILL.md /root/.claude/skills/wormhole/SKILL.md
+COPY skills/vnc/SKILL.md /root/.claude/skills/vnc/SKILL.md
 COPY CLAUDE.md /root/CLAUDE.md
 
 # ── Workspace ──

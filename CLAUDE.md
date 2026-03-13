@@ -22,6 +22,7 @@ This is a dedicated remote development server. Supports deployment to Railway or
 
 - `/agent-browser` — reference for using agent-browser CLI to interact with web pages
 - `/wormhole` — reference for using wormhole CLI to tunnel local ports
+- `/vnc` — reference for using start-vnc to share your screen with the user via noVNC
 
 ## Workspace
 

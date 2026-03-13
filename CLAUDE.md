@@ -16,6 +16,7 @@ This is a dedicated remote development server. Supports deployment to Railway or
 - **Python 3.13 + uv** — Python dev with fast package management
 - **Node.js 22** + npm
 - **Go** — for building Go-based tools
+- **noVNC** (`start-vnc`) — browser-based remote desktop for viewing GUI apps
 
 ## Skills
 
@@ -33,6 +34,18 @@ All projects should be cloned into `/workspace`.
 3. Use `agent-browser` to navigate, interact, and screenshot the app
 4. Use `wormhole` to share the dev server URL for external testing
 5. Use `vercel` for deployments, `supabase` for backend, `gh` for GitHub operations
+
+## Screen Sharing (VNC)
+
+To view a browser or GUI app running on the devbox in real time:
+
+1. Run `start-vnc` to start the virtual desktop
+2. Run `wormhole http 6080` to get a public URL
+3. Open `<url>/vnc.html` in your browser — live desktop view
+4. Launch apps on the virtual display: `DISPLAY=:99 chromium --no-sandbox &`
+5. Run `start-vnc --stop` when done
+
+Set `ENABLE_VNC=true` env var to auto-start VNC on boot.
 
 ## Conventions
 

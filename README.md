@@ -31,6 +31,7 @@ The Macbook stays home. You don't.
 | Python 3.13 + uv | Python dev with fast package management |
 | Node.js 22 | JavaScript runtime |
 | Go | For Go-based tooling |
+| noVNC | Browser-based remote desktop (screen sharing) |
 
 ## Deploy
 
@@ -83,6 +84,27 @@ wormhole http 3000
 agent-browser open "http://localhost:3000"
 agent-browser screenshot /tmp/page.png
 ```
+
+## Screen Sharing
+
+View your app's browser in real time from any device — like desktop screen sharing:
+
+```bash
+# Start the virtual desktop
+start-vnc
+
+# Share it over the internet
+wormhole http 6080
+# Open the URL + /vnc.html in your browser
+
+# Launch a browser on the virtual desktop
+DISPLAY=:99 chromium --no-sandbox http://localhost:3000 &
+
+# Stop when done
+start-vnc --stop
+```
+
+Set `ENABLE_VNC=true` as an env var to auto-start on boot.
 
 ## Ports
 

@@ -41,7 +41,13 @@ echo "  uv         : $(uv --version 2>/dev/null)"
 echo "  Wormhole   : $(wormhole version 2>/dev/null || echo 'installed')"
 echo "  AgentBrowser: $(agent-browser --version 2>/dev/null || echo 'installed')"
 echo "  tmux       : $(tmux -V)"
+echo "  noVNC      : $(dpkg -s novnc 2>/dev/null | grep Version | awk '{print $2}' || echo 'installed')"
 echo ""
+
+# ── Start VNC if ENABLE_VNC is set ──
+if [ "${ENABLE_VNC:-false}" = "true" ]; then
+    /start-vnc.sh "${VNC_RESOLUTION:-1280x800}"
+fi
 
 # ── Start Claude auth in a tmux session ──
 echo "Starting tmux session 'claude' with auth login..."

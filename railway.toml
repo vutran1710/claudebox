@@ -5,3 +5,8 @@ dockerfilePath = "Dockerfile"
 startCommand = "/entrypoint.sh"
 healthcheckPath = ""
 restartPolicyType = "NEVER"
+region = "__REGION__"
+
+[deploy.limitOverride.containers]
+cpu = __CPU__
+memoryBytes = __RAM_BYTES__

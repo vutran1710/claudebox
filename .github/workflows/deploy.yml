@@ -2,6 +2,38 @@ name: Deploy to Railway
 
 on:
   workflow_dispatch:
+    inputs:
+      region:
+        description: "Railway region"
+        required: false
+        default: "us-west2"
+        type: choice
+        options:
+          - us-west2
+          - us-east4-eqdc4a
+          - europe-west4-drams3a
+          - asia-southeast1-eqsg3a
+      cpu:
+        description: "vCPUs"
+        required: false
+        default: "4"
+        type: choice
+        options:
+          - "2"
+          - "4"
+          - "8"
+          - "16"
+          - "32"
+      ram_gb:
+        description: "RAM in GB"
+        required: false
+        default: "8"
+        type: choice
+        options:
+          - "4"
+          - "8"
+          - "16"
+          - "32"
 
 env:
   SERVICE_NAME: claude-devbox
@@ -36,6 +68,19 @@ jobs:
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
         run: |
           railway add --service "$SERVICE_NAME" --variables "SSH_PUBLIC_KEY=$SSH_PUBLIC_KEY" --json 2>/dev/null || echo "Service may already exist, continuing..."
+
+      - name: Inject resource config into railway.toml
+        env:
+          REGION: ${{ inputs.region }}
+          CPU: ${{ inputs.cpu }}
+          RAM_GB: ${{ inputs.ram_gb }}
+        run: |
+          RAM_BYTES=$(( RAM_GB * 1073741824 ))
+          sed -i "s/__REGION__/$REGION/" railway.toml
+          sed -i "s/__CPU__/$CPU/" railway.toml
+          sed -i "s/__RAM_BYTES__/$RAM_BYTES/" railway.toml
+          echo "Deploying with: region=$REGION, cpu=$CPU vCPUs, ram=${RAM_GB}GB ($RAM_BYTES bytes)"
+          cat railway.toml
 
       - name: Deploy
         env:

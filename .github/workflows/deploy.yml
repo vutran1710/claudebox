@@ -3,6 +3,9 @@ name: Deploy to Railway
 on:
   workflow_dispatch:
 
+env:
+  SERVICE_NAME: claude-devbox
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -27,10 +30,14 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy
+      - name: Create service if needed
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
         run: |
-          railway variables set SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY"
-          railway up --detach
+          railway add --service "$SERVICE_NAME" --variables "SSH_PUBLIC_KEY=$SSH_PUBLIC_KEY" --json 2>/dev/null || echo "Service may already exist, continuing..."
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --detach --service "$SERVICE_NAME"

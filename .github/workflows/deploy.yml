@@ -41,3 +41,22 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --detach --service "$SERVICE_NAME"
+
+      - name: Generate domain and print SSH access
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          DOMAIN=$(railway domain --port 22 --service "$SERVICE_NAME" --json 2>/dev/null | jq -r '.domain // empty')
+          if [ -n "$DOMAIN" ]; then
+            echo "## SSH Access" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "ssh root@${DOMAIN}" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo ""
+            echo "=============================="
+            echo "  SSH into your devbox:"
+            echo "  ssh root@${DOMAIN}"
+            echo "=============================="
+          else
+            echo "Could not generate domain. Set it manually in Railway networking settings."
+          fi

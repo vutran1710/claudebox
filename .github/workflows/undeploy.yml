@@ -26,4 +26,4 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          railway service delete --service "$SERVICE_NAME" --yes && echo "Service '$SERVICE_NAME' removed." || echo "::error::Failed to remove service"
+          railway service "$SERVICE_NAME" delete --yes && echo "Service '$SERVICE_NAME' removed." || echo "::error::Failed to remove service"

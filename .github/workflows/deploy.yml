@@ -30,7 +30,7 @@ jobs:
           fi
 
       - name: Install Railway CLI
-        run: curl -fsSL https://railway.com/install.sh | sh
+        run: npm install -g @railway/cli
 
       - name: Set SSH key and deploy
         env:

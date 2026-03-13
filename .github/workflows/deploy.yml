@@ -95,16 +95,20 @@ jobs:
           MAX_ATTEMPTS=30
           SLEEP_SECONDS=30
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            STATUS=$(railway status --service "$SERVICE_NAME" --json 2>/dev/null | jq -r '.status // empty')
-            echo "Attempt $i/$MAX_ATTEMPTS: status=$STATUS"
-            if [ "$STATUS" = "running" ] || [ "$STATUS" = "success" ]; then
-              echo "Service is ready!"
-              break
-            fi
-            if [ "$STATUS" = "failed" ] || [ "$STATUS" = "crashed" ]; then
-              echo "::error::Service deployment failed with status: $STATUS"
-              exit 1
-            fi
+            RAW=$(railway status --service "$SERVICE_NAME" --json 2>/dev/null || true)
+            echo "Attempt $i/$MAX_ATTEMPTS: $RAW"
+            STATUS=$(echo "$RAW" | jq -r '.. | .status? // empty' 2>/dev/null | grep -v '^$' | head -1 || true)
+            echo "  -> parsed status: $STATUS"
+            case "$STATUS" in
+              running|success|RUNNING|SUCCESS|deployed|DEPLOYED)
+                echo "Service is ready!"
+                break
+                ;;
+              failed|crashed|FAILED|CRASHED)
+                echo "::error::Service deployment failed with status: $STATUS"
+                exit 1
+                ;;
+            esac
             if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
               echo "::error::Timed out waiting for service to be ready (${MAX_ATTEMPTS}x${SLEEP_SECONDS}s)"
               exit 1

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" width="200" />
+</p>
+
 # Claude DevBox
 
 A dedicated remote development server deployed on Railway with Claude Code CLI and essential dev tools pre-installed.

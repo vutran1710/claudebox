@@ -1,0 +1,35 @@
+name: Undeploy from DigitalOcean
+
+on:
+  workflow_dispatch:
+
+env:
+  DROPLET_NAME: claude-devbox
+
+jobs:
+  undeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate secrets
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$DIGITALOCEAN_ACCESS_TOKEN" ]; then
+            echo "::error::DIGITALOCEAN_ACCESS_TOKEN secret is not set"
+            exit 1
+          fi
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Destroy Droplet
+        run: |
+          EXISTING_ID=$(doctl compute droplet list --format ID,Name --no-header | grep "$DROPLET_NAME" | awk '{print $1}' || true)
+          if [ -n "$EXISTING_ID" ]; then
+            doctl compute droplet delete "$EXISTING_ID" --force
+            echo "Droplet '$DROPLET_NAME' (ID: $EXISTING_ID) has been destroyed."
+          else
+            echo "No droplet named '$DROPLET_NAME' found."
+          fi

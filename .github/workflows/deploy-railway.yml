@@ -62,6 +62,9 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      - name: Copy Railway config to root
+        run: cp cloud-providers/railway/railway.toml railway.toml
+
       - name: Create service if needed
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

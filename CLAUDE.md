@@ -1,6 +1,6 @@
 # Claude DevBox
 
-This is a dedicated remote development server running on Railway.
+This is a dedicated remote development server. Supports deployment to Railway or DigitalOcean.
 
 ## Installed Tools
 

@@ -4,7 +4,7 @@
 
 # Claude DevBox
 
-A dedicated remote development server deployed on Railway with Claude Code CLI and essential dev tools pre-installed.
+A dedicated remote development server with Claude Code CLI and essential dev tools pre-installed. Deploy to **Railway** or **DigitalOcean** — your choice.
 
 ## Why
 
@@ -32,42 +32,29 @@ The Macbook stays home. You don't.
 | Node.js 22 | JavaScript runtime |
 | Go | For Go-based tooling |
 
-## Deploy to Railway
+## Deploy
 
-### Via GitHub Actions (recommended)
+Pick a cloud provider and run the corresponding GitHub Actions workflow.
+
+| Provider | Deploy | Undeploy | Secrets Needed |
+|----------|--------|----------|----------------|
+| **Railway** | "Deploy to Railway" | "Undeploy from Railway" | `RAILWAY_TOKEN`, `SSH_PUBLIC_KEY` |
+| **DigitalOcean** | "Deploy to DigitalOcean" | "Undeploy from DigitalOcean" | `DIGITALOCEAN_ACCESS_TOKEN`, `SSH_PUBLIC_KEY` |
+
+### Quick Start
 
 1. Push this repo to GitHub
-2. Create a Railway project and link it (or get a project token from Railway dashboard)
-3. Add these **GitHub repo secrets** (Settings → Secrets → Actions):
-   - `RAILWAY_TOKEN` — your Railway project token
-   - `SSH_PUBLIC_KEY` — your public key (`cat ~/.ssh/id_ed25519.pub`)
-4. Go to Actions → "Deploy to Railway" → Run workflow
-5. In Railway, expose port 22 (TCP) in networking settings for SSH access
-6. SSH in and attach to the tmux session:
+2. Add the required **secrets** for your chosen provider (Settings → Secrets → Actions)
+3. Go to **Actions** → pick your deploy workflow → **Run workflow**
+4. SSH in and attach to the tmux session:
 
 ```bash
-ssh root@<railway-host> -p <port>
+ssh root@<host>
 tmux attach -t claude
 # Complete the OAuth login, then you're ready
 ```
 
-### Manual deploy
-
-```bash
-# Install Railway CLI
-curl -fsSL https://railway.com/install.sh | sh
-
-# Link to your project
-railway link
-
-# Set required env var
-railway variables set SSH_PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)"
-
-# Deploy
-railway up --detach
-```
-
-Then expose port 22 in Railway networking settings and SSH in.
+See [`cloud-providers/railway/`](cloud-providers/railway/) or [`cloud-providers/digitalocean/`](cloud-providers/digitalocean/) for provider-specific details and manual deploy instructions.
 
 ## tmux Basics
 
@@ -99,4 +86,4 @@ agent-browser screenshot /tmp/page.png
 
 ## Ports
 
-Only port 22 (SSH) is exposed by default. All other ports are dynamic — expose whatever you need through Railway's networking settings or tunnel them via wormhole.
+Port 22 (SSH) is exposed by default. Other ports depend on your provider — expose them through your provider's networking settings or tunnel them via wormhole.

@@ -9,7 +9,7 @@ echo ""
 # ── SSH setup (required) ──
 if [ -z "$SSH_PUBLIC_KEY" ]; then
     echo "ERROR: SSH_PUBLIC_KEY env var is required but not set."
-    echo "Set it in Railway: your public key (e.g. ssh-ed25519 AAAA... you@machine)"
+    echo "Set SSH_PUBLIC_KEY as an environment variable (e.g. ssh-ed25519 AAAA... you@machine)"
     exit 1
 fi
 

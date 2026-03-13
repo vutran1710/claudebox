@@ -1,0 +1,144 @@
+name: Deploy to DigitalOcean
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "DigitalOcean region"
+        required: false
+        default: "nyc1"
+        type: choice
+        options:
+          - nyc1
+          - nyc3
+          - sfo3
+          - ams3
+          - sgp1
+          - lon1
+          - fra1
+          - blr1
+      size:
+        description: "Droplet size"
+        required: false
+        default: "s-4vcpu-8gb"
+        type: choice
+        options:
+          - s-2vcpu-4gb
+          - s-4vcpu-8gb
+          - s-8vcpu-16gb
+          - c-4-8gib
+          - c-8-16gib
+          - c-16-32gib
+
+env:
+  DROPLET_NAME: claude-devbox
+  IMAGE: docker-20-04
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate secrets
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          if [ -z "$DIGITALOCEAN_ACCESS_TOKEN" ]; then
+            echo "::error::DIGITALOCEAN_ACCESS_TOKEN secret is not set"
+            exit 1
+          fi
+          if [ -z "$SSH_PUBLIC_KEY" ]; then
+            echo "::error::SSH_PUBLIC_KEY secret is not set"
+            exit 1
+          fi
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Add SSH key to DigitalOcean
+        env:
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          KEY_FINGERPRINT=$(ssh-keygen -lf /dev/stdin <<< "$SSH_PUBLIC_KEY" | awk '{print $2}')
+          EXISTING=$(doctl compute ssh-key list --format FingerPrint --no-header | grep "$KEY_FINGERPRINT" || true)
+          if [ -z "$EXISTING" ]; then
+            doctl compute ssh-key create claude-devbox-key --public-key "$SSH_PUBLIC_KEY"
+            echo "SSH key added to DigitalOcean."
+          else
+            echo "SSH key already exists in DigitalOcean."
+          fi
+          echo "KEY_FINGERPRINT=$KEY_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Destroy existing droplet if present
+        run: |
+          EXISTING_ID=$(doctl compute droplet list --format ID,Name --no-header | grep "$DROPLET_NAME" | awk '{print $1}' || true)
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Destroying existing droplet $EXISTING_ID..."
+            doctl compute droplet delete "$EXISTING_ID" --force
+            sleep 10
+          fi
+
+      - name: Create cloud-init user data
+        env:
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          cat > /tmp/cloud-init.yml << 'CLOUD_INIT'
+          #cloud-config
+          runcmd:
+            - git clone https://github.com/${{ github.repository }}.git /opt/claude-devbox
+            - cd /opt/claude-devbox && git checkout ${{ github.ref_name }}
+            - cd /opt/claude-devbox && docker build -t claude-devbox .
+            - docker run -d --name claude-devbox --restart unless-stopped -p 22:22 -e SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY}" claude-devbox
+          CLOUD_INIT
+
+      - name: Create Droplet
+        run: |
+          doctl compute droplet create "$DROPLET_NAME" \
+            --image "$IMAGE" \
+            --size "${{ inputs.size }}" \
+            --region "${{ inputs.region }}" \
+            --ssh-keys "$KEY_FINGERPRINT" \
+            --user-data-file /tmp/cloud-init.yml \
+            --tag-name claude-devbox \
+            --wait
+
+      - name: Wait for Droplet to be ready
+        run: |
+          echo "Waiting for Droplet to be ready..."
+          MAX_ATTEMPTS=30
+          SLEEP_SECONDS=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            STATUS=$(doctl compute droplet get "$DROPLET_NAME" --format Status --no-header 2>/dev/null || true)
+            echo "Attempt $i/$MAX_ATTEMPTS: status=$STATUS"
+            if [ "$STATUS" = "active" ]; then
+              echo "Droplet is active!"
+              break
+            fi
+            if [ "$i" -eq "$MAX_ATTEMPTS" ]; then
+              echo "::error::Timed out waiting for droplet"
+              exit 1
+            fi
+            sleep $SLEEP_SECONDS
+          done
+
+      - name: Print SSH access info
+        run: |
+          IP=$(doctl compute droplet get "$DROPLET_NAME" --format PublicIPv4 --no-header)
+          echo "## SSH Access" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "ssh root@${IP}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "=============================="
+          echo "  SSH into your devbox:"
+          echo "  ssh root@${IP}"
+          echo "=============================="
+          echo ""
+          echo "Note: The Docker image is building on the Droplet."
+          echo "It may take a few minutes before the container is ready."
+          echo "SSH into the Droplet directly to monitor: docker logs -f claude-devbox"

@@ -17,7 +17,11 @@ fi
 # Ensure claude user exists
 if ! id claude &>/dev/null; then
     useradd -m -s /bin/bash claude
-    # Share tools via symlinks instead of opening /root to world
+    # Allow traversal (o+x) on tool directories so symlinks resolve
+    chmod o+x /root
+    chmod o+x /root/.local /root/.local/bin 2>/dev/null || true
+    chmod o+x /root/.npm-global /root/.npm-global/bin 2>/dev/null || true
+    chmod o+x /root/.cargo /root/.cargo/bin 2>/dev/null || true
     mkdir -p /usr/local/share/devbox-tools/bin
     for dir in /root/.local/bin /root/.npm-global/bin /root/.cargo/bin; do
         if [ -d "$dir" ]; then

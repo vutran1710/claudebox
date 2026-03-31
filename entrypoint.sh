@@ -58,7 +58,12 @@ echo ""
 
 # ── Create non-root 'claude' user (--dangerously-skip-permissions requires non-root) ──
 useradd -m -s /bin/bash claude 2>/dev/null || true
-# Share tools via symlinks in /usr/local/share instead of opening /root to world
+# Allow traversal (o+x) on tool directories so symlinks resolve, but not listing (no o+r on /root)
+chmod o+x /root
+chmod o+x /root/.local /root/.local/bin 2>/dev/null || true
+chmod o+x /root/.npm-global /root/.npm-global/bin 2>/dev/null || true
+chmod o+x /root/.cargo /root/.cargo/bin 2>/dev/null || true
+# Share tools via symlinks in a neutral path
 mkdir -p /usr/local/share/devbox-tools/bin
 for dir in /root/.local/bin /root/.npm-global/bin /root/.cargo/bin; do
     if [ -d "$dir" ]; then

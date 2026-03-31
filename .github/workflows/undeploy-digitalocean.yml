@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  DROPLET_NAME: claude-devbox
+  DROPLET_NAME: claudebox
 
 jobs:
   undeploy:

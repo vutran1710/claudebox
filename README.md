@@ -2,7 +2,7 @@
   <img src="logo.svg" width="200" />
 </p>
 
-# Claude DevBox
+# ClaudeBox
 
 A dedicated remote development server with Claude Code CLI and essential dev tools pre-installed. Deploy to **Railway** or **DigitalOcean** — your choice.
 
@@ -12,7 +12,7 @@ I stopped writing code. I stopped reading code. Claude does both now.
 
 So why am I still carrying a Macbook around like I'm the one who needs the compute?
 
-Claude DevBox puts the dev environment where it belongs — on a server, in the cloud, accessible from anywhere. SSH in from an iPad, a Chromebook, your phone, whatever. Claude writes the code, agent-browser tests it, wormhole shares it. Your job is to think and type directions.
+ClaudeBox puts the dev environment where it belongs — on a server, in the cloud, accessible from anywhere. SSH in from an iPad, a Chromebook, your phone, whatever. Claude writes the code, agent-browser tests it, wormhole shares it. Your job is to think and type directions.
 
 The Macbook stays home. You don't.
 
@@ -54,7 +54,7 @@ Pick a cloud provider and run the corresponding GitHub Actions workflow.
 
 ```bash
 ssh root@<host> 'tail -f /var/log/devbox-setup.log'
-# Setup is done when you see "Claude DevBox setup complete!"
+# Setup is done when you see "ClaudeBox setup complete!"
 ```
 
 5. Start coding:

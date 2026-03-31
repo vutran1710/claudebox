@@ -3,6 +3,11 @@ name: Deploy to DigitalOcean
 on:
   workflow_dispatch:
     inputs:
+      name:
+        description: "Instance name"
+        required: false
+        default: "claudebox"
+        type: string
       region:
         description: "DigitalOcean region"
         required: false
@@ -31,7 +36,7 @@ on:
           - c-16-32gib
 
 env:
-  DROPLET_NAME: claude-devbox
+  DROPLET_NAME: ${{ inputs.name || 'claudebox' }}
   IMAGE: ubuntu-24-04-x64
 
 jobs:
@@ -67,7 +72,7 @@ jobs:
           MD5_FP=$(ssh-keygen -lf /dev/stdin -E md5 <<< "$SSH_PUBLIC_KEY" | awk '{print $2}' | sed 's/^MD5://')
           KEY_ID=$(doctl compute ssh-key list --format ID,FingerPrint --no-header | grep "$MD5_FP" | awk '{print $1}' || true)
           if [ -z "$KEY_ID" ]; then
-            KEY_ID=$(doctl compute ssh-key create claude-devbox-key --public-key "$SSH_PUBLIC_KEY" --format ID --no-header)
+            KEY_ID=$(doctl compute ssh-key create claudebox-key --public-key "$SSH_PUBLIC_KEY" --format ID --no-header)
             echo "SSH key added to DigitalOcean (ID: $KEY_ID)."
           else
             echo "SSH key already exists (ID: $KEY_ID)."
@@ -90,15 +95,40 @@ jobs:
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
         run: |
-          cat > /tmp/cloud-init.yml <<EOF
+          # Base64-encode secrets so they don't appear in shell expansion or logs.
+          # The cloud-init runcmd decodes them at runtime on the droplet.
+          B64_SSH_KEY=$(printf '%s' "$SSH_PUBLIC_KEY" | base64 -w0)
+          B64_GH_TOKEN=$(printf '%s' "$GITHUB_TOKEN" | base64 -w0)
+
+          cat > /tmp/cloud-init.yml <<'CLOUD_INIT_EOF'
           #cloud-config
           runcmd:
-            - export SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY}"
-            - export GITHUB_TOKEN="${GITHUB_TOKEN}"
-            - git clone https://github.com/${REPO}.git /opt/claude-devbox
-            - cd /opt/claude-devbox && git checkout ${REF}
-            - bash /opt/claude-devbox/cloud-providers/digitalocean/setup.sh >> /var/log/devbox-setup.log 2>&1
-          EOF
+            - export SSH_PUBLIC_KEY="$(echo '__B64_SSH_KEY__' | base64 -d)"
+            - export GITHUB_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
+            - git clone https://github.com/__REPO__.git /opt/claudebox
+            - cd /opt/claudebox && git checkout __REF__
+            - bash /opt/claudebox/cloud-providers/digitalocean/setup.sh >> /var/log/devbox-setup.log 2>&1
+          CLOUD_INIT_EOF
+
+          # Replace placeholders after heredoc (safe: values come from secrets/github context, not user input)
+          sed -i "s|__B64_SSH_KEY__|${B64_SSH_KEY}|" /tmp/cloud-init.yml
+          sed -i "s|__B64_GH_TOKEN__|${B64_GH_TOKEN}|" /tmp/cloud-init.yml
+          sed -i "s|__REPO__|${REPO}|" /tmp/cloud-init.yml
+          sed -i "s|__REF__|${REF}|" /tmp/cloud-init.yml
+
+      - name: Ensure firewall exists
+        run: |
+          FW_ID=$(doctl compute firewall list --format ID,Name --no-header | grep "claudebox-fw" | awk '{print $1}' || true)
+          if [ -z "$FW_ID" ]; then
+            doctl compute firewall create \
+              --name claudebox-fw \
+              --tag-names claudebox \
+              --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0" \
+              --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
+            echo "Firewall created (SSH-only inbound)."
+          else
+            echo "Firewall already exists (ID: $FW_ID)."
+          fi
 
       - name: Create Droplet
         run: |
@@ -108,7 +138,7 @@ jobs:
             --region "${{ inputs.region }}" \
             --ssh-keys "$SSH_KEY_ID" \
             --user-data-file /tmp/cloud-init.yml \
-            --tag-name claude-devbox \
+            --tag-name claudebox \
             --wait
 
       - name: Get Droplet IP
@@ -142,16 +172,12 @@ jobs:
         env:
           IP: ${{ steps.droplet-ip.outputs.ip }}
         run: |
+          echo "::add-mask::${IP}"
           echo "## SSH Access" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "ssh root@${IP}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo ""
-          echo "=============================="
-          echo "  SSH into your devbox:"
-          echo "  ssh root@${IP}"
-          echo "=============================="
+          echo "Check the workflow summary tab for SSH access details."
           echo ""
           echo "Note: Tool installation runs in background via cloud-init."
-          echo "Monitor progress: ssh root@${IP} 'tail -f /var/log/devbox-setup.log'"
-          echo "Setup complete when: ssh root@${IP} 'test -f /root/.devbox-ready && echo READY'"

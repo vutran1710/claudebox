@@ -44,8 +44,15 @@ sleep 1
 fluxbox -display ":${DISPLAY_NUM}" &
 sleep 1
 
-# Start VNC server (no password — access is already gated by SSH/firewall)
-x11vnc -display ":${DISPLAY_NUM}" -rfbport "${VNC_PORT}" -forever -shared -nopw &
+# Start VNC server with password if VNC_PASSWORD is set, otherwise no password
+if [ -n "${VNC_PASSWORD:-}" ]; then
+    VNC_PASSWD_FILE="/tmp/.vnc_passwd"
+    x11vnc -storepasswd "$VNC_PASSWORD" "$VNC_PASSWD_FILE"
+    x11vnc -display ":${DISPLAY_NUM}" -rfbport "${VNC_PORT}" -forever -shared -rfbauth "$VNC_PASSWD_FILE" &
+else
+    echo "WARNING: VNC running without password. Set VNC_PASSWORD env var for authentication."
+    x11vnc -display ":${DISPLAY_NUM}" -rfbport "${VNC_PORT}" -forever -shared -nopw &
+fi
 sleep 1
 
 # Start noVNC web proxy

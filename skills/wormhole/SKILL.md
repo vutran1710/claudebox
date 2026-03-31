@@ -83,6 +83,15 @@ nohup wormhole http 3000 --headless > /tmp/wormhole.log 2>&1 &
 cat /tmp/wormhole.log
 ```
 
+## Security
+
+Wormhole tunnels are **publicly accessible** — anyone with the URL can reach the exposed service. Before tunneling:
+
+- **Never tunnel VNC (port 6080) without a VNC password** — set `VNC_PASSWORD` env var first
+- **Never tunnel services with sensitive data** unless the service has its own authentication
+- **Prefer short-lived tunnels** — stop the tunnel when done testing
+- **Use `--subdomain`** for predictable URLs that are easier to audit and revoke
+
 ## Tips
 
 - The public URL changes each time unless you use `--subdomain` (requires login)

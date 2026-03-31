@@ -20,16 +20,16 @@
 # Install doctl: brew install doctl (macOS) or snap install doctl (Linux)
 doctl auth init
 
-doctl compute droplet create claude-devbox \
+doctl compute droplet create claudebox \
   --image docker-20-04 \
   --size s-4vcpu-8gb \
   --region nyc1 \
   --ssh-keys <your-ssh-key-fingerprint>
 
 ssh root@<droplet-ip>
-git clone https://github.com/your/claude-devbox.git /opt/claude-devbox
-cd /opt/claude-devbox
-docker build -t claude-devbox .
-docker run -d --name claude-devbox --restart unless-stopped \
-  -p 22:22 -e SSH_PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)" claude-devbox
+git clone https://github.com/your/claudebox.git /opt/claudebox
+cd /opt/claudebox
+docker build -t claudebox .
+docker run -d --name claudebox --restart unless-stopped \
+  -p 22:22 -e SSH_PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)" claudebox
 ```

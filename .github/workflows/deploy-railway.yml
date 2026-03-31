@@ -3,6 +3,11 @@ name: Deploy to Railway
 on:
   workflow_dispatch:
     inputs:
+      name:
+        description: "Instance name"
+        required: false
+        default: "claudebox"
+        type: string
       region:
         description: "Railway region"
         required: false
@@ -36,7 +41,7 @@ on:
           - "32"
 
 env:
-  SERVICE_NAME: claude-devbox
+  SERVICE_NAME: ${{ inputs.name || 'claudebox' }}
 
 jobs:
   deploy:

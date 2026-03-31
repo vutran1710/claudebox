@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  SERVICE_NAME: claude-devbox
+  SERVICE_NAME: claudebox
 
 jobs:
   undeploy:
@@ -32,11 +32,14 @@ jobs:
             echo "::error::Could not determine project ID. Is the token linked to a project?"
             exit 1
           fi
+          # Use jq to safely build GraphQL payloads (prevents injection via variable values)
+          QUERY_PAYLOAD=$(jq -n --arg pid "$PROJECT_ID" \
+            '{ query: "query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }", variables: { id: $pid } }')
           SERVICE_ID=$(curl -sf "https://backboard.railway.app/graphql/v2" \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\": \"query { project(id: \\\"$PROJECT_ID\\\") { services { edges { node { id name } } } } }\"}" \
-            | jq -r ".data.project.services.edges[] | select(.node.name == \"$SERVICE_NAME\") | .node.id")
+            -d "$QUERY_PAYLOAD" \
+            | jq -r --arg name "$SERVICE_NAME" '.data.project.services.edges[] | select(.node.name == $name) | .node.id')
           if [ -z "$SERVICE_ID" ]; then
             echo "::error::Service '$SERVICE_NAME' not found in project"
             exit 1
@@ -49,10 +52,12 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ steps.get-service.outputs.service_id }}
         run: |
+          MUTATION_PAYLOAD=$(jq -n --arg sid "$SERVICE_ID" \
+            '{ query: "mutation($id: String!) { serviceDelete(id: $id) }", variables: { id: $sid } }')
           RESULT=$(curl -sf "https://backboard.railway.app/graphql/v2" \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\": \"mutation { serviceDelete(id: \\\"$SERVICE_ID\\\") }\"}")
+            -d "$MUTATION_PAYLOAD")
           if echo "$RESULT" | jq -e '.errors' > /dev/null 2>&1; then
             echo "::error::Failed to delete service: $RESULT"
             exit 1

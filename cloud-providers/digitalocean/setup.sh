@@ -7,10 +7,10 @@ export DEBIAN_FRONTEND=noninteractive
 export HOME=/root
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/local/go/bin:$PATH"
 
-REPO_DIR="/opt/claude-devbox"
+REPO_DIR="/opt/claudebox"
 
 echo "================================================"
-echo "  Claude DevBox — DigitalOcean Setup"
+echo "  ClaudeBox — DigitalOcean Setup"
 echo "================================================"
 
 # ── System dependencies + Chromium deps ──
@@ -92,10 +92,15 @@ mkdir -p /workspace
 
 # ── Create non-root 'claude' user (--dangerously-skip-permissions requires non-root) ──
 useradd -m -s /bin/bash claude 2>/dev/null || true
-chmod o+rx /root /root/.local /root/.local/bin
-chmod o+rx /root/.npm-global /root/.npm-global/bin 2>/dev/null || true
-chmod o+rx /root/.cargo /root/.cargo/bin 2>/dev/null || true
-chmod -R o+rX /root/.claude 2>/dev/null || true
+# Share tools via symlinks in /usr/local/share instead of opening /root to world
+mkdir -p /usr/local/share/devbox-tools/bin
+for dir in /root/.local/bin /root/.npm-global/bin /root/.cargo/bin; do
+    if [ -d "$dir" ]; then
+        for f in "$dir"/*; do
+            [ -x "$f" ] && ln -sf "$f" /usr/local/share/devbox-tools/bin/ 2>/dev/null || true
+        done
+    fi
+done
 
 # SSH access for claude user
 mkdir -p /home/claude/.ssh
@@ -109,13 +114,13 @@ cp "$REPO_DIR/CLAUDE.md" /home/claude/CLAUDE.md
 
 # Bashrc for claude user
 cat > /home/claude/.bashrc <<'BASHRC'
-export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME=/home/claude
 claude() {
   if [ "$1" = "auth" ] || [ "$1" = "config" ]; then
-    /root/.local/bin/claude "$@"
+    /usr/local/share/devbox-tools/bin/claude "$@"
   else
-    /root/.local/bin/claude --dangerously-skip-permissions "$@"
+    /usr/local/share/devbox-tools/bin/claude --dangerously-skip-permissions "$@"
   fi
 }
 BASHRC
@@ -130,7 +135,12 @@ if [ -n "$GITHUB_TOKEN" ]; then
     GH_TOKEN_VAL="$GITHUB_TOKEN"
     unset GITHUB_TOKEN
     echo "$GH_TOKEN_VAL" | gh auth login --with-token || true
-    su - claude -c "echo '$GH_TOKEN_VAL' | gh auth login --with-token" 2>/dev/null || true
+    # Use a temp file instead of shell quoting to avoid injection if token contains special chars
+    TOKEN_FILE=$(mktemp)
+    printf '%s' "$GH_TOKEN_VAL" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+    su - claude -c "gh auth login --with-token < '$TOKEN_FILE'" 2>/dev/null || true
+    rm -f "$TOKEN_FILE"
     echo "GitHub CLI authenticated."
 fi
 
@@ -138,5 +148,5 @@ fi
 touch /root/.devbox-ready
 echo ""
 echo "================================================"
-echo "  Claude DevBox setup complete!"
+echo "  ClaudeBox setup complete!"
 echo "================================================"

@@ -17,23 +17,28 @@ fi
 # Ensure claude user exists
 if ! id claude &>/dev/null; then
     useradd -m -s /bin/bash claude
-    chmod o+rx /root /root/.local /root/.local/bin
-    chmod o+rx /root/.npm-global /root/.npm-global/bin 2>/dev/null || true
-    chmod o+rx /root/.cargo /root/.cargo/bin 2>/dev/null || true
-    chmod -R o+rX /root/.claude 2>/dev/null || true
+    # Share tools via symlinks instead of opening /root to world
+    mkdir -p /usr/local/share/devbox-tools/bin
+    for dir in /root/.local/bin /root/.npm-global/bin /root/.cargo/bin; do
+        if [ -d "$dir" ]; then
+            for f in "$dir"/*; do
+                [ -x "$f" ] && ln -sf "$f" /usr/local/share/devbox-tools/bin/ 2>/dev/null || true
+            done
+        fi
+    done
     mkdir -p /home/claude/.ssh /home/claude/.claude
     cp /root/.ssh/authorized_keys /home/claude/.ssh/ 2>/dev/null || true
     chmod 700 /home/claude/.ssh
     chmod 600 /home/claude/.ssh/authorized_keys 2>/dev/null || true
     cp -r /root/.claude/skills /home/claude/.claude/skills 2>/dev/null || true
     cat > /home/claude/.bashrc <<'BASHRC'
-export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME=/home/claude
 claude() {
   if [ "$1" = "auth" ] || [ "$1" = "config" ]; then
-    /root/.local/bin/claude "$@"
+    /usr/local/share/devbox-tools/bin/claude "$@"
   else
-    /root/.local/bin/claude --dangerously-skip-permissions "$@"
+    /usr/local/share/devbox-tools/bin/claude --dangerously-skip-permissions "$@"
   fi
 }
 BASHRC
@@ -69,7 +74,7 @@ wait_for() {
 }
 
 echo "================================================"
-echo "  Claude DevBox — Login"
+echo "  ClaudeBox — Login"
 echo "================================================"
 echo ""
 
@@ -209,7 +214,7 @@ su - claude -c "tmux rename-session -t $TMUX_SESSION claude" 2>/dev/null || true
 
 echo ""
 echo "================================================"
-echo "  Claude DevBox — Ready!"
+echo "  ClaudeBox — Ready!"
 echo ""
 if [ -n "$RC_URL" ]; then
     echo "  Remote Control:"

@@ -50,11 +50,12 @@ RUN apt-get update && apt-get install -y \
     xterm \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Rust + Cargo ──
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# ── Rust + Cargo (pinned installer, verified via TLS) ──
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.84.0
 
-# ── Python (via uv) ──
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+# ── Python (via uv, pinned version) ──
+ARG UV_VERSION=0.6.6
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
     && $HOME/.local/bin/uv python install 3.13
 
 # ── Node.js 22 ──
@@ -63,8 +64,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && npm config set prefix "$HOME/.npm-global" \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Go (for wormhole) ──
-RUN curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+# ── Go (pinned version with checksum) ──
+ARG GO_VERSION=1.24.1
+ARG GO_SHA256=cb2396bae64183cdccf81a9a6df0aea3bce9511fc21469fb89a0c00470088073
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz \
+    && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz
 
 # ── Docker CLI ──
 RUN curl -fsSL https://get.docker.com | sh

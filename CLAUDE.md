@@ -1,4 +1,4 @@
-# Claude DevBox
+# ClaudeBox
 
 This is a dedicated remote development server. Supports deployment to Railway or DigitalOcean.
 

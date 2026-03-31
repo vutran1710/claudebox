@@ -181,7 +181,7 @@ wormhole http 6080
 # Open the URL + /vnc.html in your browser
 
 # Launch a browser on the virtual desktop
-DISPLAY=:99 chromium --no-sandbox http://localhost:3000 &
+DISPLAY=:99 chromium-browser --no-sandbox http://localhost:3000 &
 
 # Stop when done
 start-vnc --stop

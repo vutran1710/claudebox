@@ -116,20 +116,6 @@ jobs:
           sed -i "s|__REPO__|${REPO}|" /tmp/cloud-init.yml
           sed -i "s|__REF__|${REF}|" /tmp/cloud-init.yml
 
-      - name: Ensure firewall exists
-        run: |
-          FW_ID=$(doctl compute firewall list --format ID,Name --no-header | grep "claudebox-fw" | awk '{print $1}' || true)
-          if [ -z "$FW_ID" ]; then
-            doctl compute firewall create \
-              --name claudebox-fw \
-              --tag-names claudebox \
-              --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0" \
-              --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
-            echo "Firewall created (SSH-only inbound)."
-          else
-            echo "Firewall already exists (ID: $FW_ID)."
-          fi
-
       - name: Create Droplet
         run: |
           doctl compute droplet create "$DROPLET_NAME" \
@@ -138,8 +124,22 @@ jobs:
             --region "${{ inputs.region }}" \
             --ssh-keys "$SSH_KEY_ID" \
             --user-data-file /tmp/cloud-init.yml \
-            --tag-name claudebox \
+            --tag-name "$DROPLET_NAME" \
             --wait
+
+      - name: Ensure firewall exists
+        run: |
+          FW_ID=$(doctl compute firewall list --format ID,Name --no-header | grep "${DROPLET_NAME}-fw" | awk '{print $1}' || true)
+          if [ -z "$FW_ID" ]; then
+            doctl compute firewall create \
+              --name "${DROPLET_NAME}-fw" \
+              --tag-names "$DROPLET_NAME" \
+              --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0" \
+              --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
+            echo "Firewall created (SSH-only inbound)."
+          else
+            echo "Firewall already exists (ID: $FW_ID)."
+          fi
 
       - name: Get Droplet IP
         id: droplet-ip

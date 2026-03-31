@@ -84,6 +84,57 @@ curl -fsSL https://wormhole.bar/install.sh | sh
 curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
 dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
 
+# ── Agent Mesh server (build from source + systemd services) ──
+if [ -d /opt/claudebox ] && command -v go > /dev/null 2>&1; then
+    git clone https://github.com/vutran1710/amesh.git /opt/amesh 2>/dev/null || true
+    if [ -d /opt/amesh/cmd/am-server ]; then
+        cd /opt/amesh && go build -o /usr/local/bin/am-server ./cmd/am-server/
+        cat > /etc/systemd/system/am-server.service <<'SVCEOF'
+[Unit]
+Description=Agent Mesh Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/am-server
+Restart=always
+RestartSec=5
+Environment=DATA_DIR=/root/.agent-mesh
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+        cat > /etc/systemd/system/am-tunnel.service <<'SVCEOF'
+[Unit]
+Description=Cloudflare tunnel for am-server
+After=am-server.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:8090 --no-tls-verify
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+        systemctl daemon-reload
+        systemctl enable am-server am-tunnel
+        systemctl start am-server
+        sleep 2
+        systemctl start am-tunnel
+        sleep 5
+        AM_URL=$(journalctl -u am-tunnel --no-pager -n 30 | grep -o 'https://[^ ]*\.trycloudflare\.com' | tail -1)
+        AM_KEY=$(grep api_key /root/.agent-mesh/config.toml 2>/dev/null | awk -F'"' '{print $2}')
+        echo "Agent Mesh server running."
+        echo "  URL: ${AM_URL:-pending}"
+        echo "  Key: ${AM_KEY:-check ~/.agent-mesh/config.toml}"
+        cd /workspace
+    fi
+fi
+
 # ── Copy project files ──
 mkdir -p /root/.claude/skills/{agent-browser,wormhole,vnc}
 cp "$REPO_DIR/skills/agent-browser/SKILL.md" /root/.claude/skills/agent-browser/SKILL.md

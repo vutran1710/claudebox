@@ -80,6 +80,10 @@ curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | bash
 # ── Wormhole CLI ──
 curl -fsSL https://wormhole.bar/install.sh | sh
 
+# ── Cloudflared ──
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
+
 # ── Copy project files ──
 mkdir -p /root/.claude/skills/{agent-browser,wormhole,vnc}
 cp "$REPO_DIR/skills/agent-browser/SKILL.md" /root/.claude/skills/agent-browser/SKILL.md

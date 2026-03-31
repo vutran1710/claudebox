@@ -71,6 +71,11 @@ RUN curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | 
 # Wormhole CLI
 RUN curl -fsSL https://wormhole.bar/install.sh | sh
 
+# Cloudflared (for tunneling VNC/services to internet)
+RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb \
+    && dpkg -i /tmp/cloudflared.deb \
+    && rm /tmp/cloudflared.deb
+
 # SSH server
 RUN mkdir -p /run/sshd \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \

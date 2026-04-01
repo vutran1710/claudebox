@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -37,7 +38,13 @@ func RunTimeout(timeout time.Duration, name string, args ...string) (Result, err
 	return Run(ctx, name, args...)
 }
 
-const ShellPATH = "PATH=/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+const FullPATH = "/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+const ShellPATH = "PATH=" + FullPATH
+
+func init() {
+	// Set PATH for the Go process so LookPath (used by Which) finds all tools
+	os.Setenv("PATH", FullPATH)
+}
 
 func RunShell(ctx context.Context, script string) (Result, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-c", script)

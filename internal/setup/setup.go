@@ -26,15 +26,14 @@ const (
 )
 
 type model struct {
-	phase       phase
-	tools       []ui.Step
-	spinner     spinner.Model
-	textInput   textinput.Model
-	currentTool int
-	oauthURL    string
-	authResult  *auth.OAuthResult
-	vncInfo     *vnc.VNCInfo
-	err         error
+	phase      phase
+	tools      []ui.Step
+	spinner    spinner.Model
+	textInput  textinput.Model
+	oauthURL   string
+	authResult *auth.OAuthResult
+	vncInfo    *vnc.VNCInfo
+	err        error
 }
 
 func Run() error {
@@ -115,7 +114,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.oauthURL = msg.URL
 		m.phase = phaseAuthInput
 		m.textInput.Focus()
-		return m, textinput.Blink
+		// Print URL above the TUI viewport — persists and won't be truncated
+		return m, tea.Batch(
+			tea.Println("\n  Open this URL to sign in:\n"),
+			tea.Println(msg.URL),
+			tea.Println(""),
+			textinput.Blink,
+		)
 
 	case ui.AuthCompleteMsg:
 		m.authResult = &auth.OAuthResult{RemoteControlURL: msg.RemoteControlURL}
@@ -148,9 +153,8 @@ func (m model) View() string {
 	case phaseOAuth:
 		b.WriteString(fmt.Sprintf("\n  %s Waiting for OAuth URL...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseAuthInput:
-		b.WriteString("\n  Open this URL to sign in:\n\n")
-		b.WriteString(m.oauthURL + "\n\n")
-		b.WriteString(fmt.Sprintf("  Auth code: %s\n", m.textInput.View()))
+		// URL is printed above via tea.Println — just show the input here
+		b.WriteString(fmt.Sprintf("\n  Auth code: %s\n", m.textInput.View()))
 	case phaseAuthSubmit:
 		b.WriteString(fmt.Sprintf("\n  %s Completing login...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseVNC:
@@ -160,22 +164,18 @@ func (m model) View() string {
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
 		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n\n", ui.StyleCheck.Render()))
 
-		items := []ui.KV{}
 		if m.authResult != nil && m.authResult.RemoteControlURL != "" {
-			items = append(items, ui.KV{Key: "Remote Control", Value: m.authResult.RemoteControlURL})
+			b.WriteString(fmt.Sprintf("  Remote Control: %s\n", ui.StyleValue.Render(m.authResult.RemoteControlURL)))
 		}
-		if m.vncInfo != nil {
-			items = append(items, ui.KV{Key: "VNC", Value: m.vncInfo.TunnelURL + "/vnc.html"})
-			items = append(items, ui.KV{Key: "", Value: "password: " + m.vncInfo.Password, Indent: true})
+		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
+			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
+			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
 		}
-		items = append(items, ui.KV{Key: "", Value: ""})
-		items = append(items, ui.KV{Key: "Next steps", Value: ""})
-		items = append(items, ui.KV{Key: "  1.", Value: "Open VNC URL in your browser"})
-		items = append(items, ui.KV{Key: "  2.", Value: "Install Claude-in-Chrome extension"})
-		items = append(items, ui.KV{Key: "  3.", Value: "Log into Discord, Gmail, Zalo"})
-		items = append(items, ui.KV{Key: "  4.", Value: "Run: cbx activate"})
-
-		b.WriteString(ui.RenderSummaryBox("ClaudeBox Ready", items))
+		b.WriteString("\n  Next steps:\n")
+		b.WriteString("    1. Open VNC URL in your browser\n")
+		b.WriteString("    2. Install Claude-in-Chrome extension\n")
+		b.WriteString("    3. Log into Discord, Gmail, Zalo\n")
+		b.WriteString("    4. Run: cbx activate\n")
 	}
 
 	if m.err != nil {
@@ -184,6 +184,8 @@ func (m model) View() string {
 
 	return b.String()
 }
+
+// Commands
 
 type userCreatedMsg struct{}
 

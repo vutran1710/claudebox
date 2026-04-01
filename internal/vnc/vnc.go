@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ func IsRunning() bool {
 }
 
 func Stop() {
+	shell.RunShellTimeout(10*time.Second, `tmux kill-session -t vnc 2>/dev/null || true`)
 	shell.RunShellTimeout(10*time.Second, fmt.Sprintf(`
 pkill -f "Xvfb :%d" 2>/dev/null || true
 pkill -f "x11vnc" 2>/dev/null || true
@@ -38,10 +40,21 @@ pkill -f "cloudflared.*%d" 2>/dev/null || true
 `, DisplayNum, NoVNCPort, NoVNCPort))
 }
 
+func isFullyRunning() bool {
+	return shell.ProcessRunning(fmt.Sprintf("Xvfb :%d", DisplayNum)) &&
+		shell.ProcessRunning("websockify") &&
+		shell.ProcessRunning("cloudflared")
+}
+
 func Start() (*VNCInfo, error) {
-	if IsRunning() {
-		return getExistingInfo()
+	if isFullyRunning() {
+		info, err := getExistingInfo()
+		if err == nil && info.TunnelURL != "" && info.Password != "" {
+			return info, nil
+		}
 	}
+	// Kill stale partial state and start fresh
+	Stop()
 
 	password := generatePassword()
 
@@ -50,32 +63,46 @@ func Start() (*VNCInfo, error) {
 
 	display := fmt.Sprintf(":%d", DisplayNum)
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`Xvfb "%s" -screen 0 "%sx24" -ac > /dev/null 2>&1 &`, display, Resolution))
-	time.Sleep(1 * time.Second)
+	// Write a startup script and launch it in a detached tmux session.
+	tmuxSession := "vnc"
+	startScript := "/tmp/cbx-vnc-start.sh"
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`fluxbox -display "%s" > /dev/null 2>&1 &`, display))
-	time.Sleep(1 * time.Second)
+	shell.RunShellTimeout(5*time.Second, fmt.Sprintf(`tmux kill-session -t %s 2>/dev/null || true`, tmuxSession))
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`x11vnc -display "%s" -rfbport "%d" -forever -shared -rfbauth "%s" > /dev/null 2>&1 &`,
-			display, VNCPort, PasswdFile))
-	time.Sleep(1 * time.Second)
+	scriptContent := fmt.Sprintf(`#!/bin/bash
+set -m
+export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+export HOME="/root"
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`websockify --web /usr/share/novnc "%d" "localhost:%d" > /dev/null 2>&1 &`,
-			NoVNCPort, VNCPort))
+Xvfb %s -screen 0 %sx24 -ac >/dev/null 2>&1 &
+disown
+sleep 2
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`DISPLAY="%s" chromium --no-sandbox --disable-gpu --no-first-run --disable-dev-shm-usage --window-size=1280,800 > /dev/null 2>&1 &`, display))
+fluxbox -display %s >/dev/null 2>&1 &
+disown
 
-	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`cloudflared tunnel --url "http://localhost:%d" > "%s" 2>&1 &`, NoVNCPort, TunnelLog))
+x11vnc -display %s -rfbport %d -forever -shared -rfbauth %s >/dev/null 2>&1 &
+disown
+sleep 2
+
+websockify --web /usr/share/novnc %d localhost:%d >/dev/null 2>&1 &
+disown
+sleep 1
+
+DISPLAY=%s chromium --no-sandbox --disable-gpu --no-first-run --disable-dev-shm-usage --window-size=1280,800 >/dev/null 2>&1 &
+disown
+
+exec cloudflared tunnel --url http://localhost:%d 2>&1 | tee %s
+`, display, Resolution, display, display, VNCPort, PasswdFile, NoVNCPort, VNCPort, display, NoVNCPort, TunnelLog)
+
+	os.WriteFile(startScript, []byte(scriptContent), 0755)
+
+	shell.RunShellTimeout(10*time.Second,
+		fmt.Sprintf(`tmux new-session -d -s %s 'bash %s'`, tmuxSession, startScript))
 
 	tunnelURL := ""
-	for i := 0; i < 15; i++ {
-		time.Sleep(1 * time.Second)
+	for {
+		time.Sleep(2 * time.Second)
 		res, _ := shell.RunShellTimeout(5*time.Second,
 			fmt.Sprintf(`grep -o 'https://[^ ]*\.trycloudflare\.com' "%s" 2>/dev/null | tail -1`, TunnelLog))
 		url := strings.TrimSpace(res.Stdout)

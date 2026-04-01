@@ -18,7 +18,9 @@ func AllTools() []Tool {
 	return []Tool{
 		{
 			Name:  "System dependencies",
-			Check: func() bool { return shell.Which("tmux") && shell.Which("jq") },
+			Check: func() bool {
+				return shell.Which("tmux") && shell.Which("jq") && shell.Which("x11vnc") && shell.Which("websockify") && shell.Which("fluxbox")
+			},
 			Install: func(ctx context.Context) error {
 				_, err := shell.RunShell(ctx, `apt-get update && apt-get install -y \
 					curl wget git unzip jq build-essential \

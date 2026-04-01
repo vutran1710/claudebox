@@ -22,10 +22,14 @@ if [ -z "${AM_API_KEY:-}" ]; then
 fi
 
 PROMPT=$(cat "$PROMPT_FILE")
+LOG_FILE="/tmp/poll-$(basename "$PROMPT_FILE" .md).log"
 
-# Run Claude with the prompt, non-interactively
-# --dangerously-skip-permissions: required for unattended execution
-# --allowedTools: limit to browser + network tools
-claude --dangerously-skip-permissions -p "$PROMPT" \
-    --output-format json \
-    2>/tmp/poll-$(basename "$PROMPT_FILE" .md).log || true
+# Run as claude user (--dangerously-skip-permissions refuses root)
+if [ "$(id -u)" = "0" ]; then
+    su - claude -c "export DISPLAY=:99 AM_API_KEY='$AM_API_KEY' PATH=/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin && claude --dangerously-skip-permissions -p '$(echo "$PROMPT" | sed "s/'/'\\\\''/g")' --output-format json" \
+        2>"$LOG_FILE" || true
+else
+    claude --dangerously-skip-permissions -p "$PROMPT" \
+        --output-format json \
+        2>"$LOG_FILE" || true
+fi

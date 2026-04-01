@@ -21,10 +21,10 @@ type Poller struct {
 }
 
 var Pollers = []Poller{
-	{Name: "discord", File: "check-discord-messages.md", Schedule: "*/5 * * * *"},
-	{Name: "gmail-personal", File: "check-gmail-personal.md", Schedule: "1,6,11,16,21,26,31,36,41,46,51,56 * * * *"},
-	{Name: "gmail-work", File: "check-gmail-work.md", Schedule: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"},
-	{Name: "zalo", File: "check-zalo-messages.md", Schedule: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"},
+	{Name: "discord", File: "check-discord-messages.md", Schedule: "* * * * *"},
+	{Name: "gmail-personal", File: "check-gmail-personal.md", Schedule: "* * * * *"},
+	{Name: "gmail-work", File: "check-gmail-work.md", Schedule: "* * * * *"},
+	{Name: "zalo", File: "check-zalo-messages.md", Schedule: "* * * * *"},
 }
 
 func InstallPollers(apiKey string) ([]ui.PollerInfo, error) {
@@ -46,7 +46,7 @@ func InstallPollers(apiKey string) ([]ui.PollerInfo, error) {
 		line := fmt.Sprintf("%s %s %s/%s >> %s 2>&1",
 			p.Schedule, PollRunnerPath, PollingDir, p.File, logFile)
 		lines = append(lines, line)
-		infos = append(infos, ui.PollerInfo{Name: p.Name, Schedule: "every 5m"})
+		infos = append(infos, ui.PollerInfo{Name: p.Name, Schedule: "every 1m"})
 	}
 
 	cronJobs := strings.Join(lines, "\n")
@@ -92,7 +92,7 @@ func GetPollerStatus() []PollerStatus {
 			Active:   active,
 			LastRun:  lastRun,
 			Status:   status,
-			Schedule: "every 5m",
+			Schedule: "every 1m",
 		})
 	}
 	return result

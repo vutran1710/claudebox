@@ -17,7 +17,7 @@ echo "================================================"
 apt-get update && apt-get install -y \
     curl wget git unzip jq build-essential \
     ca-certificates gnupg lsb-release sudo \
-    openssh-client openssh-server tmux locales \
+    tmux locales \
     libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libxshmfence1 \

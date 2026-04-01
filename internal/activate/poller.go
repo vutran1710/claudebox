@@ -32,11 +32,12 @@ func InstallPollers(apiKey string) ([]ui.PollerInfo, error) {
 		return nil, fmt.Errorf("AM_API_KEY is empty")
 	}
 
-	cronEnv := fmt.Sprintf("DISPLAY=:99 AM_API_KEY=%s PATH=/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin HOME=/root", apiKey)
-
 	var lines []string
 	lines = append(lines, "# ClaudeBox message polling")
-	lines = append(lines, cronEnv)
+	lines = append(lines, "DISPLAY=:99")
+	lines = append(lines, fmt.Sprintf("AM_API_KEY=%s", apiKey))
+	lines = append(lines, "PATH=/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin")
+	lines = append(lines, "HOME=/root")
 	lines = append(lines, "")
 
 	var infos []ui.PollerInfo

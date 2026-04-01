@@ -148,7 +148,8 @@ func (m model) View() string {
 	case phaseOAuth:
 		b.WriteString(fmt.Sprintf("\n  %s Waiting for OAuth URL...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseAuthInput:
-		b.WriteString(fmt.Sprintf("\n  Open this URL to sign in:\n  %s\n\n", ui.StyleValue.Render(m.oauthURL)))
+		b.WriteString("\n  Open this URL to sign in:\n\n")
+		b.WriteString(m.oauthURL + "\n\n")
 		b.WriteString(fmt.Sprintf("  Auth code: %s\n", m.textInput.View()))
 	case phaseAuthSubmit:
 		b.WriteString(fmt.Sprintf("\n  %s Completing login...\n", ui.StyleSpin.Render(m.spinner.View())))

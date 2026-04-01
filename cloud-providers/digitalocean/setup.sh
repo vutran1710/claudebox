@@ -84,17 +84,31 @@ curl -fsSL https://wormhole.bar/install.sh | sh
 curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
 dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
 
-# ── Agent Mesh server (build from source + systemd services) ──
-if [ -d /opt/claudebox ] && command -v go > /dev/null 2>&1; then
-    if [ -n "${GH_TOKEN_VAL:-}" ]; then
-        git clone "https://${GH_TOKEN_VAL}@github.com/vutran1710/amesh.git" /opt/amesh 2>/dev/null || true
-    elif [ -n "${GITHUB_TOKEN:-}" ]; then
-        git clone "https://${GITHUB_TOKEN}@github.com/vutran1710/amesh.git" /opt/amesh 2>/dev/null || true
-    else
-        git clone https://github.com/vutran1710/amesh.git /opt/amesh 2>/dev/null || true
-    fi
-    if [ -d /opt/amesh/cmd/am-server ]; then
-        cd /opt/amesh && go build -o /usr/local/bin/am-server ./cmd/am-server/
+# ── Agent Mesh server (download release binary + systemd services) ──
+AM_REPO="vutran1710/am"
+AM_VERSION="latest"
+AM_ARCH="linux-amd64"
+
+echo "Downloading am-server from ${AM_REPO}..."
+GH_AUTH_HEADER=""
+if [ -n "${GH_TOKEN_VAL:-}" ]; then
+    GH_AUTH_HEADER="Authorization: token ${GH_TOKEN_VAL}"
+elif [ -n "${GITHUB_TOKEN:-}" ]; then
+    GH_AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+fi
+
+# Get download URL for latest release
+AM_DOWNLOAD_URL=$(curl -sfL ${GH_AUTH_HEADER:+-H "$GH_AUTH_HEADER"} \
+    "https://api.github.com/repos/${AM_REPO}/releases/${AM_VERSION}" \
+    | grep -o "https://[^\"]*am-server-${AM_ARCH}[^\"]*" | head -1)
+
+if [ -n "$AM_DOWNLOAD_URL" ]; then
+    curl -sfL ${GH_AUTH_HEADER:+-H "$GH_AUTH_HEADER"} \
+        -H "Accept: application/octet-stream" \
+        "$AM_DOWNLOAD_URL" -o /usr/local/bin/am-server
+    chmod +x /usr/local/bin/am-server
+
+    if [ -x /usr/local/bin/am-server ]; then
         cat > /etc/systemd/system/am-server.service <<'SVCEOF'
 [Unit]
 Description=Agent Mesh Server
@@ -139,6 +153,8 @@ SVCEOF
         echo "  Key: ${AM_KEY:-check ~/.agent-mesh/config.toml}"
         cd /workspace
     fi
+else
+    echo "WARNING: Failed to download am-server from ${AM_REPO}"
 fi
 
 # ── Copy project files ──

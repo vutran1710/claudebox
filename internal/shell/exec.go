@@ -37,8 +37,24 @@ func RunTimeout(timeout time.Duration, name string, args ...string) (Result, err
 	return Run(ctx, name, args...)
 }
 
+const ShellPATH = "PATH=/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+
 func RunShell(ctx context.Context, script string) (Result, error) {
-	return Run(ctx, "bash", "-c", script)
+	cmd := exec.CommandContext(ctx, "bash", "-c", script)
+	cmd.Env = append(cmd.Environ(), ShellPATH, "HOME=/root")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+	}
+	return Result{
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		ExitCode: exitCode,
+	}, err
 }
 
 func RunShellTimeout(timeout time.Duration, script string) (Result, error) {

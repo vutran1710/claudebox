@@ -203,7 +203,11 @@ func installNextTool(index int) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout())
 		defer cancel()
 		if err := t.Install(ctx); err != nil {
-			return ui.ToolErrorMsg{Index: index, Err: err}
+			// Some install scripts return non-zero despite succeeding (e.g. Docker).
+			// Re-check before reporting failure.
+			if !t.Check() {
+				return ui.ToolErrorMsg{Index: index, Err: err}
+			}
 		}
 		return ui.ToolInstalledMsg{Index: index}
 	}

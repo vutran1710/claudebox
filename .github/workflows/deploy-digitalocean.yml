@@ -105,8 +105,7 @@ jobs:
           runcmd:
             - export SSH_PUBLIC_KEY="$(echo '__B64_SSH_KEY__' | base64 -d)"
             - export GITHUB_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
-            - git clone https://github.com/__REPO__.git /opt/claudebox
-            - cd /opt/claudebox && git checkout __REF__
+            - git clone --branch __REF__ https://github.com/__REPO__.git /opt/claudebox
             - bash /opt/claudebox/cloud-providers/digitalocean/setup.sh >> /var/log/devbox-setup.log 2>&1
           CLOUD_INIT_EOF
 

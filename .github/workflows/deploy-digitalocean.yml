@@ -104,10 +104,21 @@ jobs:
           #cloud-config
           runcmd:
             - |
-              export SSH_PUBLIC_KEY="$(echo '__B64_SSH_KEY__' | base64 -d)"
+              mkdir -p /root/.ssh
+              echo "$(echo '__B64_SSH_KEY__' | base64 -d)" >> /root/.ssh/authorized_keys
+              chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
               export GITHUB_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
+              CBX_URL=$(curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/__REPO__/releases/latest" \
+                | grep -o 'https://[^"]*cbx-linux-amd64[^"]*' | head -1)
+              if [ -n "$CBX_URL" ]; then
+                curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" \
+                  -H "Accept: application/octet-stream" \
+                  "$CBX_URL" -o /usr/local/bin/cbx
+                chmod +x /usr/local/bin/cbx
+              fi
               git clone --branch __REF__ "https://${GITHUB_TOKEN}@github.com/__REPO__.git" /opt/claudebox
-              bash /opt/claudebox/cloud-providers/digitalocean/setup.sh >> /var/log/devbox-setup.log 2>&1
+              touch /root/.cbx-ready
           CLOUD_INIT_EOF
 
           # Replace placeholders after heredoc (safe: values come from secrets/github context, not user input)

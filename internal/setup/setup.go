@@ -42,6 +42,7 @@ func Run() error {
 	for i, t := range tools {
 		steps[i] = ui.Step{Name: t.Name, State: ui.StepPending}
 	}
+	steps[0].State = ui.StepRunning
 
 	m := model{
 		phase:     phaseTools,

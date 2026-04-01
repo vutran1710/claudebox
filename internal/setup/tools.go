@@ -22,7 +22,9 @@ func AllTools() []Tool {
 				return shell.Which("tmux") && shell.Which("jq") && shell.Which("x11vnc") && shell.Which("websockify") && shell.Which("fluxbox")
 			},
 			Install: func(ctx context.Context) error {
-				_, err := shell.RunShell(ctx, `apt-get update && apt-get install -y \
+				_, err := shell.RunShell(ctx, `
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+apt-get update && apt-get install -y \
 					curl wget git unzip jq build-essential \
 					ca-certificates gnupg lsb-release sudo tmux locales \
 					libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
@@ -53,10 +55,13 @@ func AllTools() []Tool {
 			},
 		},
 		{
-			Name:  "Node.js 22",
-			Check: func() bool { return shell.Which("node") },
+			Name: "Node.js 22",
+			Check: func() bool {
+				res, _ := shell.RunShellTimeout(5*time.Second, `node --version 2>/dev/null | grep -q "^v2[2-9]\|^v[3-9]" && which npm >/dev/null 2>&1`)
+				return res.ExitCode == 0
+			},
 			Install: func(ctx context.Context) error {
-				_, err := shell.RunShell(ctx, `curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs && npm config set prefix "/root/.npm-global" && rm -rf /var/lib/apt/lists/*`)
+				_, err := shell.RunShell(ctx, `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs && npm config set prefix "/root/.npm-global" && rm -rf /var/lib/apt/lists/*`)
 				return err
 			},
 		},
@@ -80,7 +85,7 @@ func AllTools() []Tool {
 			Name:  "GitHub CLI",
 			Check: func() bool { return shell.Which("gh") },
 			Install: func(ctx context.Context) error {
-				_, err := shell.RunShell(ctx, `curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*`)
+				_, err := shell.RunShell(ctx, `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*`)
 				return err
 			},
 		},

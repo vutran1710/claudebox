@@ -86,7 +86,13 @@ dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb
 
 # ── Agent Mesh server (build from source + systemd services) ──
 if [ -d /opt/claudebox ] && command -v go > /dev/null 2>&1; then
-    git clone https://github.com/vutran1710/amesh.git /opt/amesh 2>/dev/null || true
+    if [ -n "${GH_TOKEN_VAL:-}" ]; then
+        git clone "https://${GH_TOKEN_VAL}@github.com/vutran1710/amesh.git" /opt/amesh 2>/dev/null || true
+    elif [ -n "${GITHUB_TOKEN:-}" ]; then
+        git clone "https://${GITHUB_TOKEN}@github.com/vutran1710/amesh.git" /opt/amesh 2>/dev/null || true
+    else
+        git clone https://github.com/vutran1710/amesh.git /opt/amesh 2>/dev/null || true
+    fi
     if [ -d /opt/amesh/cmd/am-server ]; then
         cd /opt/amesh && go build -o /usr/local/bin/am-server ./cmd/am-server/
         cat > /etc/systemd/system/am-server.service <<'SVCEOF'
@@ -144,6 +150,10 @@ cp "$REPO_DIR/CLAUDE.md" /root/CLAUDE.md
 cp "$REPO_DIR/start-vnc.sh" /start-vnc.sh && chmod +x /start-vnc.sh
 ln -sf /start-vnc.sh /usr/local/bin/start-vnc
 cp "$REPO_DIR/login-claude.sh" /root/login-claude.sh && chmod +x /root/login-claude.sh
+
+# ── Polling prompts ──
+cp -r "$REPO_DIR/polling" /opt/claudebox/polling
+chmod +x /opt/claudebox/polling/poll-runner.sh /opt/claudebox/polling/setup-cron.sh
 
 # ── Workspace ──
 mkdir -p /workspace

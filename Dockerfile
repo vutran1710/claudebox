@@ -95,6 +95,9 @@ COPY CLAUDE.md /root/CLAUDE.md
 RUN mkdir -p /workspace
 WORKDIR /workspace
 
+COPY polling /opt/claudebox/polling
+RUN chmod +x /opt/claudebox/polling/poll-runner.sh /opt/claudebox/polling/setup-cron.sh
+
 COPY entrypoint.sh /entrypoint.sh
 COPY start-vnc.sh /start-vnc.sh
 COPY login-claude.sh /login-claude.sh

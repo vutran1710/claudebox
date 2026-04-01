@@ -218,7 +218,7 @@ su - claude -c "tmux rename-session -t $TMUX_SESSION claude" 2>/dev/null || true
 
 # ── Auto-start VNC + Chrome ──
 echo ""
-echo "[4/5] Starting VNC + Chrome..."
+echo "[4/4] Starting VNC + Chrome..."
 if [ -x /start-vnc.sh ]; then
     VNC_OUTPUT=$(/start-vnc.sh 2>&1)
     VNC_URL=$(echo "$VNC_OUTPUT" | grep -o 'https://[^ ]*\.trycloudflare\.com[^ ]*' | head -1)
@@ -232,16 +232,6 @@ fi
 # Launch Chromium on the virtual desktop
 sleep 2
 DISPLAY=:99 chromium --no-sandbox --window-size=1280,800 &>/dev/null &
-
-# ── Auto-activate pollers ──
-echo "[5/5] Activating message pollers..."
-AM_KEY=$(grep api_key /root/.agent-mesh/config.toml 2>/dev/null | awk -F'"' '{print $2}')
-if [ -n "$AM_KEY" ] && [ -x /opt/claudebox/polling/setup-cron.sh ]; then
-    export AM_API_KEY="$AM_KEY"
-    bash /opt/claudebox/polling/setup-cron.sh 2>&1 | head -5
-else
-    echo "  WARNING: am-server not configured or setup-cron.sh not found, skipping pollers"
-fi
 
 # ── Summary ──
 echo ""
@@ -263,9 +253,8 @@ echo "  SSH access:"
 echo "    ssh claude@${HOST_IP}"
 echo ""
 echo "  Next steps:"
-echo "    1. Open VNC URL above in your browser"
-echo "    2. Install Claude-in-Chrome extension in Chromium"
-echo "    3. Log into Discord, Gmail, Zalo in Chromium"
-echo "    4. Pollers are already active — they'll start"
-echo "       forwarding messages once apps are logged in"
+echo "    1. Open VNC URL in your browser"
+echo "    2. Install Claude-in-Chrome extension"
+echo "    3. Log into Discord, Gmail, Zalo"
+echo "    4. Run: bash /opt/claudebox/polling/setup-cron.sh"
 echo "================================================"

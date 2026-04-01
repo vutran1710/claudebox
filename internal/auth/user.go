@@ -13,7 +13,8 @@ func EnsureClaudeUser() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	shell.RunShell(ctx, "useradd -m -s /bin/bash claude 2>/dev/null || true")
+	// Create user — check if exists first
+	shell.RunShell(ctx, `id claude >/dev/null 2>&1 || useradd -m -s /bin/bash claude`)
 
 	shell.RunShell(ctx, "chmod o+x /root")
 	shell.RunShell(ctx, "chmod o+x /root/.local /root/.local/bin 2>/dev/null || true")

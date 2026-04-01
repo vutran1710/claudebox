@@ -145,7 +145,7 @@ if ! wait_for "oauth/authorize" 5; then
     exit 1
 fi
 
-OAUTH_URL=$(capture_pane | tr '\n' ' ' | grep -oP 'https://claude[^\s]*oauth/authorize[^\s]*' | sed 's/Pastecodehereifprompted.*//' | tr -d ' ')
+OAUTH_URL=$(capture_pane | tr -d '\n' | tr -d ' ' | grep -o 'https://claude\.com/cai/oauth/authorize[^"]*' | sed 's/Pastecodehereifprompted.*//' | head -1)
 
 echo ""
 echo "================================================"

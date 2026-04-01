@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/vutran1710/claudebox/internal/setup"
 )
 
 const version = "0.1.0"
@@ -15,7 +17,10 @@ func main() {
 
 	switch os.Args[1] {
 	case "setup":
-		runSetup()
+		if err := setup.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "setup failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "activate":
 		runActivate()
 	case "status":
@@ -38,6 +43,5 @@ func printUsage() {
 	fmt.Println("  cbx version    Show version")
 }
 
-func runSetup()    { fmt.Println("setup: not implemented") }
 func runActivate() { fmt.Println("activate: not implemented") }
 func runStatus()   { fmt.Println("status: not implemented") }

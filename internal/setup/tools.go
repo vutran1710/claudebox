@@ -133,7 +133,7 @@ apt-get update && apt-get install -y \
 			Name:  "Cloudflare Tunnel",
 			Check: func() bool { return shell.Which("cloudflared") },
 			Install: func(ctx context.Context) error {
-				_, err := shell.RunShell(ctx, `curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" && dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb`)
+				_, err := shell.RunShell(ctx, `while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done && curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" && dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb`)
 				return err
 			},
 		},

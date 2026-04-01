@@ -145,7 +145,7 @@ if ! wait_for "oauth/authorize" 5; then
     exit 1
 fi
 
-OAUTH_URL=$(capture_pane | tr -d '\n' | tr -d ' ' | grep -o 'https://claude.ai/oauth/authorize[^"]*' | sed 's/Pastecodehereifprompted.*//')
+OAUTH_URL=$(capture_pane | tr '\n' ' ' | grep -oP 'https://claude[^\s]*oauth/authorize[^\s]*' | sed 's/Pastecodehereifprompted.*//' | tr -d ' ')
 
 echo ""
 echo "================================================"
@@ -209,8 +209,8 @@ fi
 
 # Capture remote-control URL
 RC_URL=""
-if wait_for "claude.ai/code" 10; then
-    RC_URL=$(capture_pane | grep -o 'https://claude.ai/code/[^ ]*' | head -1 || true)
+if wait_for "claude.com/code\|claude.ai/code" 10; then
+    RC_URL=$(capture_pane | grep -oP 'https://claude\.(com|ai)/code/[^\s]*' | head -1 || true)
 fi
 
 # Rename tmux session to 'claude' for persistence

@@ -39,7 +39,7 @@ chmod 700 /home/claude/.ssh
 chmod 600 /home/claude/.ssh/authorized_keys 2>/dev/null || true`)
 
 	shell.RunShell(ctx, `cp -r /root/.claude /home/claude/.claude 2>/dev/null || true`)
-	shell.RunShell(ctx, `cp -r /root/.config/gh /home/claude/.config/gh 2>/dev/null || true`)
+	shell.RunShell(ctx, `mkdir -p /home/claude/.config && cp -r /root/.config/gh /home/claude/.config/gh 2>/dev/null || true`)
 
 	bashrc := `export PATH="/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME=/home/claude

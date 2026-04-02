@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/vutran1710/claudebox/internal/auth"
+	"github.com/vutran1710/claudebox/internal/shell"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
 )
@@ -16,7 +18,8 @@ import (
 type phase int
 
 const (
-	phaseTools phase = iota
+	phaseCloudInit phase = iota
+	phaseTools
 	phaseUser
 	phaseOAuth
 	phaseAuthInput
@@ -24,6 +27,13 @@ const (
 	phaseVNC
 	phaseDone
 )
+
+// Critical tools that must succeed for setup to continue
+var criticalTools = map[string]bool{
+	"System dependencies": true,
+	"Claude Code CLI":     true,
+	"Cloudflare Tunnel":   true,
+}
 
 type model struct {
 	phase      phase
@@ -42,10 +52,9 @@ func Run() error {
 	for i, t := range tools {
 		steps[i] = ui.Step{Name: t.Name, State: ui.StepPending}
 	}
-	steps[0].State = ui.StepRunning
 
 	m := model{
-		phase:     phaseTools,
+		phase:     phaseCloudInit,
 		tools:     steps,
 		spinner:   ui.NewSpinner(),
 		textInput: ui.NewTextInput("Paste auth code here..."),
@@ -59,7 +68,7 @@ func Run() error {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, installNextTool(0))
+	return tea.Batch(m.spinner.Tick, waitForCloudInit())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,6 +95,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case cloudInitDoneMsg:
+		m.phase = phaseTools
+		m.tools[0].State = ui.StepRunning
+		return m, installNextTool(0)
+
 	case ui.ToolInstalledMsg:
 		m.tools[msg.Index].State = ui.StepDone
 		next := msg.Index + 1
@@ -99,6 +113,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ui.ToolErrorMsg:
 		m.tools[msg.Index].State = ui.StepError
 		m.tools[msg.Index].Error = msg.Err.Error()
+		// Stop on critical tool failure
+		toolName := ToolName(msg.Index)
+		if criticalTools[toolName] {
+			m.err = fmt.Errorf("%s failed: %w", toolName, msg.Err)
+			return m, tea.Quit
+		}
 		next := msg.Index + 1
 		if next < len(m.tools) {
 			m.tools[next].State = ui.StepRunning
@@ -115,7 +135,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.oauthURL = msg.URL
 		m.phase = phaseAuthInput
 		m.textInput.Focus()
-		// Print URL above the TUI viewport — persists and won't be truncated
 		return m, tea.Batch(
 			tea.Println("\n  Open this URL to sign in:\n"),
 			tea.Println(msg.URL),
@@ -146,6 +165,11 @@ func (m model) View() string {
 
 	b.WriteString(ui.StyleBold.Render("  ClaudeBox Setup") + "\n\n")
 
+	if m.phase == phaseCloudInit {
+		b.WriteString(fmt.Sprintf("  %s Waiting for cloud-init to finish...\n", ui.StyleSpin.Render(m.spinner.View())))
+		return b.String()
+	}
+
 	b.WriteString(ui.RenderStepList(m.tools, m.spinner))
 
 	switch m.phase {
@@ -154,7 +178,6 @@ func (m model) View() string {
 	case phaseOAuth:
 		b.WriteString(fmt.Sprintf("\n  %s Waiting for OAuth URL...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseAuthInput:
-		// URL is printed above via tea.Println — just show the input here
 		b.WriteString(fmt.Sprintf("\n  Auth code: %s\n", m.textInput.View()))
 	case phaseAuthSubmit:
 		b.WriteString(fmt.Sprintf("\n  %s Completing login...\n", ui.StyleSpin.Render(m.spinner.View())))
@@ -187,7 +210,26 @@ func (m model) View() string {
 
 // Commands
 
+type cloudInitDoneMsg struct{}
 type userCreatedMsg struct{}
+
+func waitForCloudInit() tea.Cmd {
+	return func() tea.Msg {
+		// Wait until cloud-init finishes (no more dpkg/apt locks)
+		for i := 0; i < 60; i++ {
+			res, _ := shell.RunShellTimeout(5*time.Second,
+				`fuser /var/lib/dpkg/lock-frontend 2>/dev/null`)
+			if res.ExitCode != 0 {
+				// No lock held — cloud-init apt is done
+				// Wait a bit more for any post-apt cleanup
+				time.Sleep(2 * time.Second)
+				return cloudInitDoneMsg{}
+			}
+			time.Sleep(3 * time.Second)
+		}
+		return cloudInitDoneMsg{}
+	}
+}
 
 func installNextTool(index int) tea.Cmd {
 	return func() tea.Msg {
@@ -214,7 +256,9 @@ func installNextTool(index int) tea.Cmd {
 
 func createUser() tea.Cmd {
 	return func() tea.Msg {
-		auth.EnsureClaudeUser()
+		if err := auth.EnsureClaudeUser(); err != nil {
+			return ui.ErrMsg{Err: fmt.Errorf("failed to create claude user: %w", err)}
+		}
 		return userCreatedMsg{}
 	}
 }

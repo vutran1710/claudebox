@@ -9,7 +9,7 @@ import (
 	"github.com/vutran1710/claudebox/internal/status"
 )
 
-const version = "0.1.5"
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {

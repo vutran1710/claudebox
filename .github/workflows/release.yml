@@ -41,8 +41,9 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ github.ref_name }}
         run: |
-          go build -o "cbx-${GOOS}-${GOARCH}" ./cmd/cbx/
+          go build -ldflags "-X main.version=${TAG#v}" -o "cbx-${GOOS}-${GOARCH}" ./cmd/cbx/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

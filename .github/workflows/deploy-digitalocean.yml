@@ -91,10 +91,12 @@ jobs:
       - name: Create cloud-init user data
         env:
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
         run: |
           B64_SSH_KEY=$(printf '%s' "$SSH_PUBLIC_KEY" | base64 -w0)
+          B64_GH_TOKEN=$(printf '%s' "${GH_TOKEN:-}" | base64 -w0)
 
           cat > /tmp/cloud-init.yml <<'CLOUD_INIT_EOF'
           #cloud-config
@@ -107,10 +109,15 @@ jobs:
                 -o /usr/local/bin/cbx
               chmod +x /usr/local/bin/cbx
               git clone --branch __REF__ "https://github.com/__REPO__.git" /opt/claudebox
+              GH_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
+              if [ -n "$GH_TOKEN" ]; then
+                echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true
+              fi
               touch /root/.cbx-ready
           CLOUD_INIT_EOF
 
           sed -i "s|__B64_SSH_KEY__|${B64_SSH_KEY}|" /tmp/cloud-init.yml
+          sed -i "s|__B64_GH_TOKEN__|${B64_GH_TOKEN}|" /tmp/cloud-init.yml
           sed -i "s|__REPO__|${REPO}|" /tmp/cloud-init.yml
           sed -i "s|__REF__|${REF}|" /tmp/cloud-init.yml
 

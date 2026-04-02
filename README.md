@@ -44,6 +44,7 @@ cd /workspace && claude
 | `DIGITALOCEAN_ACCESS_TOKEN` | For DigitalOcean | DigitalOcean API token |
 | `RAILWAY_TOKEN` | For Railway | Railway API token |
 | `SSH_PUBLIC_KEY` | Yes | Your SSH public key |
+| `GH_TOKEN` | No | GitHub PAT for `gh` CLI auth on the server |
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**
 4. Choose region and size, click **Run** (defaults to Singapore)

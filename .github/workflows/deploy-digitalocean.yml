@@ -11,7 +11,7 @@ on:
       region:
         description: "DigitalOcean region"
         required: false
-        default: "nyc1"
+        default: "sgp1"
         type: choice
         options:
           - nyc1

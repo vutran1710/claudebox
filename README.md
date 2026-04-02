@@ -43,7 +43,6 @@ cd /workspace && claude
 |--------|----------|---------|
 | `DIGITALOCEAN_ACCESS_TOKEN` | Yes | DigitalOcean API token |
 | `SSH_PUBLIC_KEY` | Yes | Your SSH public key |
-| `GH_TOKEN` | No | GitHub PAT for private repos |
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**
 4. Choose region and size, click **Run** (defaults to Singapore)

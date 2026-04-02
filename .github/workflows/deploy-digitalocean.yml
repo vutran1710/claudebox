@@ -91,14 +91,10 @@ jobs:
       - name: Create cloud-init user data
         env:
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
         run: |
-          # Base64-encode secrets so they don't appear in shell expansion or logs.
-          # The cloud-init runcmd decodes them at runtime on the droplet.
           B64_SSH_KEY=$(printf '%s' "$SSH_PUBLIC_KEY" | base64 -w0)
-          B64_GH_TOKEN=$(printf '%s' "$GITHUB_TOKEN" | base64 -w0)
 
           cat > /tmp/cloud-init.yml <<'CLOUD_INIT_EOF'
           #cloud-config
@@ -107,17 +103,14 @@ jobs:
               mkdir -p /root/.ssh
               echo "$(echo '__B64_SSH_KEY__' | base64 -d)" >> /root/.ssh/authorized_keys
               chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
-              export GITHUB_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
               curl -sL "https://github.com/__REPO__/releases/latest/download/cbx-linux-amd64" \
                 -o /usr/local/bin/cbx
               chmod +x /usr/local/bin/cbx
-              git clone --branch __REF__ "https://${GITHUB_TOKEN}@github.com/__REPO__.git" /opt/claudebox
+              git clone --branch __REF__ "https://github.com/__REPO__.git" /opt/claudebox
               touch /root/.cbx-ready
           CLOUD_INIT_EOF
 
-          # Replace placeholders after heredoc (safe: values come from secrets/github context, not user input)
           sed -i "s|__B64_SSH_KEY__|${B64_SSH_KEY}|" /tmp/cloud-init.yml
-          sed -i "s|__B64_GH_TOKEN__|${B64_GH_TOKEN}|" /tmp/cloud-init.yml
           sed -i "s|__REPO__|${REPO}|" /tmp/cloud-init.yml
           sed -i "s|__REF__|${REF}|" /tmp/cloud-init.yml
 
@@ -174,25 +167,9 @@ jobs:
           done
 
       - name: Wait for cloud-init to finish
-        env:
-          IP: ${{ steps.droplet-ip.outputs.ip }}
-          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
         run: |
-          echo "Waiting for cloud-init to complete..."
-          mkdir -p ~/.ssh
-          echo "$SSH_PUBLIC_KEY" > /tmp/deploy_key.pub
-          ssh-keygen -y -f /dev/null 2>/dev/null || true
-          for i in $(seq 1 30); do
-            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@"$IP" 'test -f /root/.cbx-ready' 2>/dev/null; then
-              echo "cloud-init done, cbx is ready!"
-              break
-            fi
-            echo "Attempt $i/30: cloud-init still running..."
-            if [ "$i" -eq 30 ]; then
-              echo "::warning::Cloud-init may not have finished yet"
-            fi
-            sleep 10
-          done
+          echo "Waiting 60s for cloud-init to download cbx and clone repo..."
+          sleep 60
 
       - name: Print SSH access info
         env:

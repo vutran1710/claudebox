@@ -99,15 +99,6 @@ type VNCReadyMsg struct {
 	URL      string
 	Password string
 }
-type ActivateDoneMsg struct {
-	AMURL   string
-	AMKey   string
-	Pollers []PollerInfo
-}
-type PollerInfo struct {
-	Name     string
-	Schedule string
-}
 type ErrMsg struct{ Err error }
 
 func (e ErrMsg) Error() string { return e.Err.Error() }

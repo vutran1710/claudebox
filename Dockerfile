@@ -5,13 +5,11 @@ ENV HOME=/root
 ENV PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/local/go/bin:$PATH"
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
-# Polling prompts and skills
-COPY polling /opt/claudebox/polling
+# Skills and config
 COPY skills /root/.claude/skills
 COPY CLAUDE.md /root/CLAUDE.md
 
-RUN mkdir -p /workspace /root/.claude/skills \
-    && chmod +x /opt/claudebox/polling/poll-runner.sh
+RUN mkdir -p /workspace /root/.claude/skills
 
 WORKDIR /workspace
 

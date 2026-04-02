@@ -11,7 +11,7 @@ on:
       region:
         description: "Railway region"
         required: false
-        default: "us-west2"
+        default: "asia-southeast1-eqsg3a"
         type: choice
         options:
           - us-west2

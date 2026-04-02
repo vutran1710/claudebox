@@ -43,9 +43,13 @@ apt-get update && apt-get install -y \
 			Check: func() bool { return shell.Which("cloudflared") },
 			Install: func(ctx context.Context) error {
 				_, err := shell.RunShell(ctx, `
-systemctl stop unattended-upgrades 2>/dev/null || true
+systemctl kill unattended-upgrades 2>/dev/null || true
 systemctl disable unattended-upgrades 2>/dev/null || true
-while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+apt-get remove -y unattended-upgrades 2>/dev/null || true
+for i in $(seq 1 60); do
+    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1 || break
+    sleep 2
+done
 curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
 dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb`)
 				return err

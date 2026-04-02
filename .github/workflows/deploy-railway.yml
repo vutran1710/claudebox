@@ -74,13 +74,8 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          VARS="SSH_PUBLIC_KEY=$SSH_PUBLIC_KEY"
-          if [ -n "$GITHUB_TOKEN" ]; then
-            VARS="$VARS,GITHUB_TOKEN=$GITHUB_TOKEN"
-          fi
-          railway add --service "$SERVICE_NAME" --variables "$VARS" --json 2>/dev/null || echo "Service may already exist, continuing..."
+          railway add --service "$SERVICE_NAME" --variables "SSH_PUBLIC_KEY=$SSH_PUBLIC_KEY" --json 2>/dev/null || echo "Service may already exist, continuing..."
 
       - name: Inject resource config into railway.toml
         env:

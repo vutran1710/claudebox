@@ -38,7 +38,7 @@ func RunTimeout(timeout time.Duration, name string, args ...string) (Result, err
 	return Run(ctx, name, args...)
 }
 
-const FullPATH = "/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
+const FullPATH = "/usr/sbin:/root/.local/bin:/root/.npm-global/bin:/root/.cargo/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 const ShellPATH = "PATH=" + FullPATH
 
 func init() {

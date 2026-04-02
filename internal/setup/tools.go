@@ -42,17 +42,14 @@ apt-get update && apt-get install -y \
 			Name:  "Cloudflare Tunnel",
 			Check: func() bool { return shell.Which("cloudflared") },
 			Install: func(ctx context.Context) error {
+				// Install via apt repo — shares the lock with system deps so no contention
 				_, err := shell.RunShell(ctx, `
-curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
-for i in $(seq 1 30); do
-    if dpkg -i /tmp/cloudflared.deb 2>/dev/null; then
-        rm -f /tmp/cloudflared.deb
-        exit 0
-    fi
-    sleep 5
-done
-echo "dpkg -i failed after 30 retries" >&2
-exit 1`)
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 3; done
+mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflared.list
+apt-get update -o Dir::Etc::sourcelist="sources.list.d/cloudflared.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+apt-get install -y cloudflared`)
 				return err
 			},
 		},

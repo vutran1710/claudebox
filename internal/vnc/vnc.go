@@ -18,8 +18,8 @@ const (
 	PasswdFile      = "/root/.vnc_passwd"
 	TunnelLog       = "/tmp/cloudflared-vnc.log"
 	Resolution      = "1280x800"
-	ChromeMCPExtDir = "/opt/chrome-mcp/extension"
-	ChromeMCPServer = "/opt/chrome-mcp/server/index.js"
+	ChromeMCPExtDir = "/opt/chrome-lite-mcp/extension"
+	ChromeMCPServer = "/opt/chrome-lite-mcp/server/index.js"
 )
 
 type VNCInfo struct {
@@ -91,7 +91,7 @@ websockify --web /usr/share/novnc %d localhost:%d >/dev/null 2>&1 &
 disown
 sleep 1
 
-node %s >/tmp/chrome-mcp.log 2>&1 &
+node %s >/tmp/chrome-lite-mcp.log 2>&1 &
 disown
 sleep 1
 

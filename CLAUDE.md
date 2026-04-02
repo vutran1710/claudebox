@@ -5,7 +5,7 @@ This is a dedicated remote development server. Supports deployment to Railway or
 ## Installed Tools
 
 - **Claude Code CLI** — AI coding assistant (runs with `--dangerously-skip-permissions` for full autonomy)
-- **Chrome MCP** — browser automation via Chrome extension + MCP server (port 7331)
+- **Chrome Lite MCP** — browser automation via Chrome extension + MCP server (port 7331)
 - **Agent Browser** — headless browser automation CLI for testing web apps
 - **Playwright** — browser automation and end-to-end testing framework
 - **GitHub CLI** (`gh`) — GitHub operations
@@ -118,12 +118,12 @@ DISPLAY=:99 npx playwright test --headed
 Ports: noVNC web viewer on `6080`, VNC server on `5900`.
 Set `ENABLE_VNC=true` env var to auto-start on boot.
 
-## Chrome MCP (Message Polling)
+## Chrome Lite MCP (Message Polling)
 
-Chrome MCP provides browser automation via an MCP server connected to the Chrome extension.
+Chrome Lite MCP provides browser automation via an MCP server connected to the Chrome extension.
 Use it to read and interact with web apps: Gmail, Discord, Zalo, Messenger, Slack.
 
-Skills reference: `/home/claude/.claude/chrome-mcp-skills.md`
+Skills reference: `/home/claude/.claude/chrome-lite-mcp-skills.md`
 
 ### Available tools
 

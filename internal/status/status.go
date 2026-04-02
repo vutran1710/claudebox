@@ -60,9 +60,9 @@ func Run() {
 
 	chromeMCP := activate.IsChromeMCPConfigured()
 	if chromeMCP {
-		fmt.Println(ui.StatusLine("Chrome MCP", true, "configured"))
+		fmt.Println(ui.StatusLine("Chrome Lite MCP", true, "configured"))
 	} else {
-		fmt.Println(ui.StatusLine("Chrome MCP", false, "not configured — run: cbx activate"))
+		fmt.Println(ui.StatusLine("Chrome Lite MCP", false, "not configured — run: cbx activate"))
 	}
 
 	fmt.Println()

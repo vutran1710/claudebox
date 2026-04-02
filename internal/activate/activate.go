@@ -29,7 +29,7 @@ func Run() error {
 	steps := []ui.Step{
 		{Name: "Start am-server", State: ui.StepRunning},
 		{Name: "Start Cloudflare tunnel", State: ui.StepPending},
-		{Name: "Configure Chrome MCP", State: ui.StepPending},
+		{Name: "Configure Chrome Lite MCP", State: ui.StepPending},
 	}
 	m := activateModel{
 		phase:   phaseAMServer,
@@ -89,8 +89,8 @@ func (m activateModel) View() string {
 		b.WriteString(fmt.Sprintf("    curl %s/healthz\n", m.amInfo.TunnelURL))
 		b.WriteString(fmt.Sprintf("    curl -H \"X-API-Key: %s\" %s/api/messages\n", m.amInfo.APIKey, m.amInfo.TunnelURL))
 		b.WriteString(fmt.Sprintf("    curl -H \"X-API-Key: %s\" %s/api/stats\n", m.amInfo.APIKey, m.amInfo.TunnelURL))
-		b.WriteString("\n  " + ui.StyleBold.Render("Chrome MCP") + "\n")
-		b.WriteString("    Chrome MCP configured in Claude Code\n")
+		b.WriteString("\n  " + ui.StyleBold.Render("Chrome Lite MCP") + "\n")
+		b.WriteString("    Chrome Lite MCP configured in Claude Code\n")
 		b.WriteString("    Claude can now read Gmail, Discord, Zalo, Messenger, Slack\n")
 		b.WriteString("    via Chrome browser automation\n")
 	}
@@ -117,7 +117,7 @@ func doConfigureChromeMCP() tea.Cmd {
 	return func() tea.Msg {
 		// Clean up old cron pollers
 		RemoveOldPollers()
-		// Configure Chrome MCP for Claude Code
+		// Configure Chrome Lite MCP for Claude Code
 		if err := ConfigureChromeMCP(); err != nil {
 			return ui.ErrMsg{Err: err}
 		}

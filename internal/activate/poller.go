@@ -14,7 +14,7 @@ const (
   "mcpServers": {
     "chrome": {
       "command": "node",
-      "args": ["/opt/chrome-mcp/server/index.js"],
+      "args": ["/opt/chrome-lite-mcp/server/index.js"],
       "env": {}
     }
   }
@@ -35,7 +35,7 @@ func ConfigureChromeMCP() error {
 	// Write MCP config if not already present
 	res, _ := shell.RunShellTimeout(5*time.Second,
 		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
-	if !strings.Contains(res.Stdout, "chrome-mcp") {
+	if !strings.Contains(res.Stdout, "chrome-lite-mcp") {
 		_, err = shell.RunShellTimeout(10*time.Second,
 			fmt.Sprintf(`echo '%s' > %s && chown claude:claude %s`,
 				ChromeMCPEntry, ChromeMCPConfig, ChromeMCPConfig))
@@ -46,7 +46,7 @@ func ConfigureChromeMCP() error {
 
 	// Copy skills.md to a location Claude Code can reference
 	_, _ = shell.RunShellTimeout(10*time.Second,
-		`cp /opt/chrome-mcp/docs/skills.md /home/claude/.claude/chrome-mcp-skills.md 2>/dev/null && chown claude:claude /home/claude/.claude/chrome-mcp-skills.md`)
+		`cp /opt/chrome-lite-mcp/docs/skills.md /home/claude/.claude/chrome-lite-mcp-skills.md 2>/dev/null && chown claude:claude /home/claude/.claude/chrome-lite-mcp-skills.md`)
 
 	return nil
 }
@@ -55,7 +55,7 @@ func ConfigureChromeMCP() error {
 func IsChromeMCPConfigured() bool {
 	res, _ := shell.RunShellTimeout(5*time.Second,
 		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
-	return strings.Contains(res.Stdout, "chrome-mcp")
+	return strings.Contains(res.Stdout, "chrome-lite-mcp")
 }
 
 // RemoveOldPollers cleans up any legacy cron-based pollers.

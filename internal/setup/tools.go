@@ -39,6 +39,16 @@ apt-get update && apt-get install -y \
 			},
 		},
 		{
+			Name:  "Cloudflare Tunnel",
+			Check: func() bool { return shell.Which("cloudflared") },
+			Install: func(ctx context.Context) error {
+				_, err := shell.RunShell(ctx, `
+curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb`)
+				return err
+			},
+		},
+		{
 			Name:  "Rust 1.84",
 			Check: func() bool { return shell.FileExists("/root/.cargo/bin/rustc") },
 			Install: func(ctx context.Context) error {
@@ -126,21 +136,6 @@ apt-get update && apt-get install -y \
 			Check: func() bool { return shell.Which("supabase") },
 			Install: func(ctx context.Context) error {
 				_, err := shell.RunShell(ctx, `curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | bash`)
-				return err
-			},
-		},
-		{
-			Name:  "Cloudflare Tunnel",
-			Check: func() bool { return shell.Which("cloudflared") },
-			Install: func(ctx context.Context) error {
-				_, err := shell.RunShell(ctx, `
-curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
-for i in $(seq 1 10); do
-    dpkg -i /tmp/cloudflared.deb 2>&1 && break
-    echo "dpkg attempt $i failed, waiting for lock..."
-    sleep 5
-done
-rm -f /tmp/cloudflared.deb`)
 				return err
 			},
 		},

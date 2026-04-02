@@ -4,29 +4,33 @@
 
 # ClaudeBox
 
-A cloud dev server for Claude Code. Deploy, SSH in, start coding.
+Your personal Claude Code agent, always on, accessible from anywhere.
+
+Deploy Claude Code to a cloud server and access it from your phone, tablet, or any device via the official Claude app. No static workstation needed — your dev environment lives in the cloud, ready when you are.
+
+## Why
+
+- Work from anywhere — phone, iPad, coffee shop laptop
+- Claude Code runs 24/7 with full autonomy, pre-authenticated
+- Browser automation reads your Gmail, Discord, Zalo, Messenger via Chrome Lite MCP
+- Messages aggregated to am-server, queryable anytime
+- VNC desktop for visual tasks, tunneled via Cloudflare
 
 ## Quick Start
 
 ```bash
-# 1. Deploy via GitHub Actions (DigitalOcean)
+# 1. Deploy via GitHub Actions (DigitalOcean or Railway)
 # 2. Run setup
 ssh -t root@<host> "cbx setup"
 
-# 3. Install Chrome extension + login to apps via VNC
-# 4. Activate message pollers
+# 3. Log into messaging apps via VNC
+# 4. Activate services
 ssh -t root@<host> "cbx activate"
 
-# 5. Start coding
+# 5. Access Claude Code from the official Claude app or SSH
 ssh claude@<host>
 cd /workspace && claude
 ```
-
-## What Is This
-
-ClaudeBox puts your dev environment on a server in the cloud. SSH in from anywhere — iPad, Chromebook, phone. Claude writes the code, agent-browser tests it, Cloudflare tunnels share it.
-
-All tools come pre-installed. A TUI CLI (`cbx`) handles the entire setup — tool installation, Claude authentication, VNC desktop, and message polling.
 
 ## Deploy
 
@@ -42,7 +46,7 @@ All tools come pre-installed. A TUI CLI (`cbx`) handles the entire setup — too
 | `GH_TOKEN` | No | GitHub PAT for private repos |
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**
-4. Choose region and size, click **Run**
+4. Choose region and size, click **Run** (defaults to Singapore)
 5. SSH command appears in the workflow summary
 
 ### Docker (local)
@@ -63,10 +67,10 @@ ssh -t root@<host> "cbx setup"
 ```
 
 This runs a TUI that:
-- Installs all tools (Rust, Node, Go, Python, Docker, Claude CLI, etc.)
+- Installs all tools (Rust, Node, Go, Python, Docker, Claude CLI, Chrome Lite MCP, etc.)
 - Creates the `claude` user with autonomy mode
 - Authenticates Claude Code via OAuth (prints URL, you paste the code)
-- Starts VNC desktop + Chrome + Cloudflare tunnel
+- Starts VNC desktop + Chrome (with MCP extension) + Cloudflare tunnel
 
 Output:
 
@@ -78,6 +82,7 @@ Output:
   ✓ Python 3.13 + uv
   ✓ Node.js 22
   ...
+  ✓ Chrome Lite MCP
   ✓ am-server
 
   Open this URL to sign in:
@@ -93,16 +98,17 @@ Output:
 
   Next steps:
     1. Open VNC URL in your browser
-    2. Install Claude-in-Chrome extension
-    3. Log into Discord, Gmail, Zalo
-    4. Run: cbx activate
+    2. Log into Discord, Gmail, Zalo
+    3. Run: cbx activate
 ```
 
-### Step 2: Browser setup (manual)
+### Step 2: Browser login (manual, one-time)
 
-Open the VNC URL, enter the password. In Chrome:
-1. Install the Claude-in-Chrome extension
-2. Log into Discord, Gmail (personal + work), Zalo
+Open the VNC URL, enter the password. In Chrome, log into:
+- Gmail (personal + work)
+- Discord
+- Zalo (QR code)
+- Messenger (if needed)
 
 ### Step 3: `cbx activate`
 
@@ -110,7 +116,7 @@ Open the VNC URL, enter the password. In Chrome:
 ssh -t root@<host> "cbx activate"
 ```
 
-Starts am-server (message aggregation) with a Cloudflare tunnel and activates cron-based message pollers.
+Starts am-server (message aggregation) with a Cloudflare tunnel and configures Chrome Lite MCP for Claude Code.
 
 Output:
 
@@ -119,7 +125,7 @@ Output:
 
   ✓ Start am-server
   ✓ Start Cloudflare tunnel
-  ✓ Activate pollers
+  ✓ Configure Chrome Lite MCP
 
   AM Server
     URL: https://abc.trycloudflare.com
@@ -128,14 +134,12 @@ Output:
   Usage:
     curl $URL/healthz
     curl -H "X-API-Key: $KEY" $URL/api/messages
-    curl -H "X-API-Key: $KEY" "$URL/api/messages?q=meeting"
     curl -H "X-API-Key: $KEY" $URL/api/stats
 
-  Pollers:
-    ✓ discord        every 5m
-    ✓ gmail-personal every 5m
-    ✓ gmail-work     every 5m
-    ✓ zalo           every 5m
+  Chrome Lite MCP
+    Chrome Lite MCP configured in Claude Code
+    Claude can now read Gmail, Discord, Zalo, Messenger, Slack
+    via Chrome browser automation
 ```
 
 ### Check status
@@ -143,8 +147,6 @@ Output:
 ```bash
 ssh root@<host> "cbx status"
 ```
-
-Shows health of all services:
 
 ```
   ClaudeBox Status
@@ -157,35 +159,40 @@ Shows health of all services:
   am-server        ✓ running (port 8090)
                      https://abc.trycloudflare.com
                      key: 005ca208...
-
-  Pollers
-    discord        ✓ every 5m (last: 2m ago, ok)
-    gmail-personal ✓ every 5m (last: 3m ago, ok)
-    gmail-work     ✓ every 5m (last: 4m ago, ok)
-    zalo           ✓ every 5m (last: 1m ago, ok)
+  Chrome Lite MCP  ✓ configured
 ```
 
-## Message Polling
+## How Messages Work
 
-ClaudeBox periodically reads unread messages from messaging apps via Chrome browser automation and forwards them to am-server.
+Claude Code reads messages from your apps using Chrome Lite MCP — a browser automation MCP server that controls Chrome via extension + DevTools Protocol.
 
-| Poller | App | Interval |
-|--------|-----|----------|
-| `check-discord-messages.md` | Discord DMs | Every 5 min |
-| `check-gmail-personal.md` | Gmail (personal) | Every 5 min |
-| `check-gmail-work.md` | Gmail (work) | Every 5 min |
-| `check-zalo-messages.md` | Zalo | Every 5 min |
+```
+Claude Code  <-MCP->  Chrome Lite MCP  <-WebSocket->  Chrome Extension  <-Chrome API->  Gmail/Discord/Zalo/...
+                                                                                              |
+                                                                                              v
+                                                                                         am-server (SQLite)
+                                                                                              |
+                                                                                              v
+                                                                                    GET /api/messages (query anytime)
+```
 
-Pollers use Claude Code CLI (`claude -p`) to execute prompt files against the Chrome browser. Messages are forwarded to am-server's `/ingest` endpoint.
+- **Read**: Claude navigates to each app, runs JS snippets to extract messages
+- **Store**: Structured messages are pushed to am-server for persistent storage
+- **Reply**: Claude can navigate back and send replies when you ask
+- **Query**: am-server is queryable anytime via REST API, even when Claude isn't running
+
+Supported apps: Gmail, Discord, Zalo, Messenger (non-E2EE), Slack
 
 ## Tools
 
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Claude Code CLI | latest | AI coding assistant |
-| Chromium | 147+ | Desktop browser (VNC) + headless |
+| Chrome Lite MCP | latest | Browser automation via MCP |
+| Chromium | 147+ | Desktop browser (VNC) |
 | Agent Browser | latest | Headless browser automation CLI |
 | Playwright | latest | E2E testing framework |
+| am-server | latest | Message aggregation + search |
 | Node.js | 22 | JavaScript runtime |
 | Python | 3.13 (via uv) | Python dev |
 | Rust + Cargo | 1.84 | Systems programming |
@@ -199,18 +206,18 @@ Pollers use Claude Code CLI (`claude -p`) to execute prompt files against the Ch
 ## Architecture
 
 ```
-You (SSH) ──> ClaudeBox (cloud server)
+You (phone/tablet/laptop)
+  |
+  ├── Claude App (mobile) ──> Claude Code (remote, always on)
+  └── SSH ──> ClaudeBox (cloud server)
                ├── cbx CLI (setup, activate, status)
                ├── claude user (autonomy mode)
                ├── /workspace (projects)
                ├── VNC desktop (Chrome + Fluxbox)
+               │    ├── Chrome Lite MCP extension
                │    └── Cloudflare tunnel -> public URL
-               ├── am-server (message aggregation)
-               │    └── Cloudflare tunnel -> public URL
-               └── Pollers (cron, every 5m)
-                    ├── Discord
-                    ├── Gmail (personal + work)
-                    └── Zalo
+               └── am-server (message store)
+                    └── Cloudflare tunnel -> public URL
 ```
 
 ## Security
@@ -219,7 +226,7 @@ You (SSH) ──> ClaudeBox (cloud server)
 - VNC: password-protected, only accessible via Cloudflare tunnel
 - am-server: API key required, only accessible via Cloudflare tunnel
 - DigitalOcean firewall: only port 22 open
-- All other ports (5900, 6080, 8090) blocked from external access
+- All other ports (5900, 6080, 7331, 8090) blocked from external access
 
 ## Ports
 
@@ -228,4 +235,5 @@ You (SSH) ──> ClaudeBox (cloud server)
 | 22 | SSH | Direct (key auth) |
 | 5900 | VNC | localhost only |
 | 6080 | noVNC | Via Cloudflare tunnel |
+| 7331 | Chrome Lite MCP | localhost only |
 | 8090 | am-server | Via Cloudflare tunnel |

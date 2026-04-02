@@ -150,9 +150,9 @@ curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/rele
 			Install: func(ctx context.Context) error {
 				script := `
 AM_REPO="vutran1710/am"
-DOWNLOAD_URL=$(curl -sfL "https://api.github.com/repos/${AM_REPO}/releases/latest" | grep -o 'https://[^"]*am-server-linux-amd64[^"]*' | head -1)
+DOWNLOAD_URL=$(curl -sL "https://api.github.com/repos/${AM_REPO}/releases/latest" | grep -o 'https://[^"]*am-server-linux-amd64[^"]*' | head -1)
 if [ -n "$DOWNLOAD_URL" ]; then
-    curl -sfL "$DOWNLOAD_URL" -o /usr/local/bin/am-server
+    curl -sL "$DOWNLOAD_URL" -o /usr/local/bin/am-server
     chmod +x /usr/local/bin/am-server
 else
     echo "Failed to find am-server release" >&2
@@ -171,10 +171,10 @@ fi`
 			Install: func(ctx context.Context) error {
 				script := `
 REPO="vutran1710/chrome-lite-mcp"
-DOWNLOAD_URL=$(curl -sfL "https://api.github.com/repos/${REPO}/releases/latest" | grep -o 'https://[^"]*chrome-lite-mcp-.*\.tar\.gz[^"]*' | head -1)
+DOWNLOAD_URL=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep -o 'https://[^"]*chrome-lite-mcp-.*\.tar\.gz[^"]*' | head -1)
 if [ -n "$DOWNLOAD_URL" ]; then
     mkdir -p /opt/chrome-lite-mcp
-    curl -sfL "$DOWNLOAD_URL" | tar -xz -C /opt/chrome-lite-mcp
+    curl -sL "$DOWNLOAD_URL" | tar -xz -C /opt/chrome-lite-mcp
 else
     echo "Failed to find chrome-lite-mcp release" >&2
     exit 1

@@ -174,9 +174,8 @@ func (m model) View() string {
 		}
 		b.WriteString("\n  Next steps:\n")
 		b.WriteString("    1. Open VNC URL in your browser\n")
-		b.WriteString("    2. Install Claude-in-Chrome extension\n")
-		b.WriteString("    3. Log into Discord, Gmail, Zalo\n")
-		b.WriteString("    4. Run: cbx activate\n")
+		b.WriteString("    2. Log into Gmail, Discord, Zalo in Chrome\n")
+		b.WriteString("    3. Run: cbx activate\n")
 	}
 
 	if m.err != nil {

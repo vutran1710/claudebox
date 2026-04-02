@@ -13,12 +13,12 @@ func EnsureClaudeUser() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Create user if not exists — useradd may warn about existing home dir, that's ok
-	shell.RunShell(ctx, `id claude >/dev/null 2>&1 || useradd -m -s /bin/bash -d /home/claude claude || useradd -s /bin/bash -d /home/claude claude`)
+	// Create user if not exists
+	shell.RunShellTimeout(10*time.Second, `id claude >/dev/null 2>&1 || useradd -m -s /bin/bash claude`)
 	// Verify user was created
-	res, _ := shell.RunShellTimeout(5*time.Second, `id claude`)
-	if res.ExitCode != 0 {
-		return fmt.Errorf("failed to create claude user")
+	res, err := shell.RunShellTimeout(5*time.Second, `id claude`)
+	if err != nil || res.ExitCode != 0 {
+		return fmt.Errorf("failed to create claude user: %s", res.Stderr)
 	}
 
 	shell.RunShell(ctx, "chmod o+x /root")

@@ -58,36 +58,11 @@ func Run() {
 		fmt.Println(ui.StatusLine("am-server", false, "not running"))
 	}
 
-	pollers := activate.GetPollerStatus()
-	hasPollers := false
-	for _, p := range pollers {
-		if p.Active {
-			hasPollers = true
-			break
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("  " + ui.StyleBold.Render("Pollers"))
-	if !hasPollers {
-		fmt.Println("    " + ui.StyleDim.Render("not activated — run: cbx activate"))
+	chromeMCP := activate.IsChromeMCPConfigured()
+	if chromeMCP {
+		fmt.Println(ui.StatusLine("Chrome MCP", true, "configured"))
 	} else {
-		for _, p := range pollers {
-			check := ui.StyleCheck.Render()
-			if !p.Active {
-				check = ui.StyleCross.Render()
-			}
-			detail := p.Schedule
-			if p.LastRun != "" {
-				detail += fmt.Sprintf(" (last: %s, %s)", p.LastRun, p.Status)
-			} else {
-				detail += " (no runs yet)"
-			}
-			fmt.Printf("    %s %s %s\n",
-				ui.StyleLabel.Render(p.Name),
-				check,
-				ui.StyleDim.Render(detail))
-		}
+		fmt.Println(ui.StatusLine("Chrome MCP", false, "not configured — run: cbx activate"))
 	}
 
 	fmt.Println()

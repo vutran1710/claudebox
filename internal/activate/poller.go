@@ -6,114 +6,60 @@ import (
 	"time"
 
 	"github.com/vutran1710/claudebox/internal/shell"
-	"github.com/vutran1710/claudebox/internal/ui"
 )
 
 const (
-	PollRunnerPath = "/opt/claudebox/polling/poll-runner.sh"
-	PollingDir     = "/opt/claudebox/polling"
+	ChromeMCPConfig = `/home/claude/.claude.json`
+	ChromeMCPEntry  = `{
+  "mcpServers": {
+    "chrome": {
+      "command": "node",
+      "args": ["/opt/chrome-mcp/server/index.js"],
+      "env": {}
+    }
+  }
+}`
 )
 
-type Poller struct {
-	Name     string
-	File     string
-	Schedule string
-}
-
-var Pollers = []Poller{
-	{Name: "discord", File: "check-discord-messages.md", Schedule: "* * * * *"},
-	{Name: "gmail-personal", File: "check-gmail-personal.md", Schedule: "* * * * *"},
-	{Name: "gmail-work", File: "check-gmail-work.md", Schedule: "* * * * *"},
-	{Name: "zalo", File: "check-zalo-messages.md", Schedule: "* * * * *"},
-}
-
-func InstallPollers(apiKey string) ([]ui.PollerInfo, error) {
-	if apiKey == "" {
-		return nil, fmt.Errorf("AM_API_KEY is empty")
-	}
-
-	var lines []string
-	lines = append(lines, "# ClaudeBox message polling")
-	lines = append(lines, "DISPLAY=:99")
-	lines = append(lines, fmt.Sprintf("AM_API_KEY=%s", apiKey))
-	lines = append(lines, "PATH=/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin")
-	lines = append(lines, "HOME=/root")
-	lines = append(lines, "")
-
-	var infos []ui.PollerInfo
-	for _, p := range Pollers {
-		logFile := fmt.Sprintf("/var/log/poll-%s.log", p.Name)
-		line := fmt.Sprintf("%s %s %s/%s >> %s 2>&1",
-			p.Schedule, PollRunnerPath, PollingDir, p.File, logFile)
-		lines = append(lines, line)
-		infos = append(infos, ui.PollerInfo{Name: p.Name, Schedule: "every 1m"})
-	}
-
-	cronJobs := strings.Join(lines, "\n")
-
-	script := fmt.Sprintf(
-		`(crontab -l 2>/dev/null | grep -v "ClaudeBox message polling" | grep -v "poll-runner.sh" || true; echo '%s') | crontab -`,
-		cronJobs)
-
-	_, err := shell.RunShellTimeout(10*time.Second, script)
+// ConfigureChromeMCP sets up the Chrome MCP server in Claude Code's config.
+// This replaces the old cron-based pollers — Claude Code now reads messages
+// directly via Chrome MCP tools (page_eval, page_read, etc.) on demand.
+func ConfigureChromeMCP() error {
+	// Ensure .claude directory exists
+	_, err := shell.RunShellTimeout(10*time.Second,
+		`mkdir -p /home/claude/.claude && chown claude:claude /home/claude/.claude`)
 	if err != nil {
-		return nil, fmt.Errorf("failed to install crontab: %w", err)
+		return fmt.Errorf("failed to create .claude dir: %w", err)
 	}
 
-	return infos, nil
-}
-
-func GetPollerStatus() []PollerStatus {
-	var result []PollerStatus
-	for _, p := range Pollers {
-		logFile := fmt.Sprintf("/var/log/poll-%s.log", p.Name)
-		lastRun := ""
-		status := "no runs yet"
-
-		res, _ := shell.RunShellTimeout(5*time.Second,
-			fmt.Sprintf(`stat -c '%%Y' %s 2>/dev/null`, logFile))
-		if ts := strings.TrimSpace(res.Stdout); ts != "" {
-			res2, _ := shell.RunShellTimeout(5*time.Second,
-				fmt.Sprintf(`python3 -c "import time; print(int(time.time()) - %s)" 2>/dev/null || echo ""`, ts))
-			if secs := strings.TrimSpace(res2.Stdout); secs != "" {
-				lastRun = formatDuration(secs)
-				status = "ok"
-			}
+	// Write MCP config if not already present
+	res, _ := shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
+	if !strings.Contains(res.Stdout, "chrome-mcp") {
+		_, err = shell.RunShellTimeout(10*time.Second,
+			fmt.Sprintf(`echo '%s' > %s && chown claude:claude %s`,
+				ChromeMCPEntry, ChromeMCPConfig, ChromeMCPConfig))
+		if err != nil {
+			return fmt.Errorf("failed to write MCP config: %w", err)
 		}
-
-		active := false
-		cronRes, _ := shell.RunShellTimeout(5*time.Second, "crontab -l 2>/dev/null")
-		if strings.Contains(cronRes.Stdout, p.File) {
-			active = true
-		}
-
-		result = append(result, PollerStatus{
-			Name:     p.Name,
-			Active:   active,
-			LastRun:  lastRun,
-			Status:   status,
-			Schedule: "every 1m",
-		})
 	}
-	return result
+
+	// Copy skills.md to a location Claude Code can reference
+	_, _ = shell.RunShellTimeout(10*time.Second,
+		`cp /opt/chrome-mcp/docs/skills.md /home/claude/.claude/chrome-mcp-skills.md 2>/dev/null && chown claude:claude /home/claude/.claude/chrome-mcp-skills.md`)
+
+	return nil
 }
 
-type PollerStatus struct {
-	Name     string
-	Active   bool
-	LastRun  string
-	Status   string
-	Schedule string
+// IsChromeMCPConfigured checks if Chrome MCP is set up in Claude Code's config.
+func IsChromeMCPConfigured() bool {
+	res, _ := shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
+	return strings.Contains(res.Stdout, "chrome-mcp")
 }
 
-func formatDuration(secsStr string) string {
-	var secs int
-	fmt.Sscanf(secsStr, "%d", &secs)
-	if secs < 60 {
-		return fmt.Sprintf("%ds ago", secs)
-	}
-	if secs < 3600 {
-		return fmt.Sprintf("%dm ago", secs/60)
-	}
-	return fmt.Sprintf("%dh ago", secs/3600)
+// RemoveOldPollers cleans up any legacy cron-based pollers.
+func RemoveOldPollers() {
+	shell.RunShellTimeout(10*time.Second,
+		`(crontab -l 2>/dev/null | grep -v "ClaudeBox message polling" | grep -v "poll-runner.sh") | crontab - 2>/dev/null || true`)
 }

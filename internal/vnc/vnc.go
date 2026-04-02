@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	DisplayNum = 99
-	VNCPort    = 5900
-	NoVNCPort  = 6080
-	PasswdFile = "/root/.vnc_passwd"
-	TunnelLog  = "/tmp/cloudflared-vnc.log"
-	Resolution = "1280x800"
+	DisplayNum      = 99
+	VNCPort         = 5900
+	NoVNCPort       = 6080
+	PasswdFile      = "/root/.vnc_passwd"
+	TunnelLog       = "/tmp/cloudflared-vnc.log"
+	Resolution      = "1280x800"
+	ChromeMCPExtDir = "/opt/chrome-mcp/extension"
+	ChromeMCPServer = "/opt/chrome-mcp/server/index.js"
 )
 
 type VNCInfo struct {
@@ -89,11 +91,15 @@ websockify --web /usr/share/novnc %d localhost:%d >/dev/null 2>&1 &
 disown
 sleep 1
 
-DISPLAY=%s chromium --no-sandbox --disable-gpu --no-first-run --disable-dev-shm-usage --window-size=1280,800 >/dev/null 2>&1 &
+node %s >/tmp/chrome-mcp.log 2>&1 &
+disown
+sleep 1
+
+DISPLAY=%s chromium --no-sandbox --disable-gpu --no-first-run --disable-dev-shm-usage --window-size=1280,800 --load-extension=%s >/dev/null 2>&1 &
 disown
 
 exec cloudflared tunnel --url http://localhost:%d 2>&1 | tee %s
-`, display, Resolution, display, display, VNCPort, PasswdFile, NoVNCPort, VNCPort, display, NoVNCPort, TunnelLog)
+`, display, Resolution, display, display, VNCPort, PasswdFile, NoVNCPort, VNCPort, ChromeMCPServer, display, ChromeMCPExtDir, NoVNCPort, TunnelLog)
 
 	os.WriteFile(startScript, []byte(scriptContent), 0755)
 

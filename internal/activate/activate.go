@@ -13,7 +13,7 @@ type activatePhase int
 
 const (
 	phaseAMServer activatePhase = iota
-	phasePollers
+	phaseChromeMCP
 	phaseDone
 )
 
@@ -22,7 +22,6 @@ type activateModel struct {
 	spinner spinner.Model
 	steps   []ui.Step
 	amInfo  *AMServerInfo
-	pollers []ui.PollerInfo
 	err     error
 }
 
@@ -30,7 +29,7 @@ func Run() error {
 	steps := []ui.Step{
 		{Name: "Start am-server", State: ui.StepRunning},
 		{Name: "Start Cloudflare tunnel", State: ui.StepPending},
-		{Name: "Activate pollers", State: ui.StepPending},
+		{Name: "Configure Chrome MCP", State: ui.StepPending},
 	}
 	m := activateModel{
 		phase:   phaseAMServer,
@@ -63,11 +62,10 @@ func (m activateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.steps[1].State = ui.StepDone
 		m.steps[2].State = ui.StepRunning
 		m.amInfo = msg.info
-		m.phase = phasePollers
-		return m, doInstallPollers(msg.info.APIKey)
-	case pollersReadyMsg:
+		m.phase = phaseChromeMCP
+		return m, doConfigureChromeMCP()
+	case chromeMCPReadyMsg:
 		m.steps[2].State = ui.StepDone
-		m.pollers = msg.pollers
 		m.phase = phaseDone
 		return m, tea.Quit
 	case ui.ErrMsg:
@@ -90,13 +88,11 @@ func (m activateModel) View() string {
 		b.WriteString("\n\n  " + ui.StyleBold.Render("Usage") + "\n")
 		b.WriteString(fmt.Sprintf("    curl %s/healthz\n", m.amInfo.TunnelURL))
 		b.WriteString(fmt.Sprintf("    curl -H \"X-API-Key: %s\" %s/api/messages\n", m.amInfo.APIKey, m.amInfo.TunnelURL))
-		b.WriteString(fmt.Sprintf("    curl -H \"X-API-Key: %s\" \"%s/api/messages?q=meeting\"\n", m.amInfo.APIKey, m.amInfo.TunnelURL))
 		b.WriteString(fmt.Sprintf("    curl -H \"X-API-Key: %s\" %s/api/stats\n", m.amInfo.APIKey, m.amInfo.TunnelURL))
-		b.WriteString("\n  " + ui.StyleBold.Render("Pollers") + "\n")
-		for _, p := range m.pollers {
-			b.WriteString(fmt.Sprintf("    %s %s %s\n",
-				ui.StyleCheck.Render(), ui.StyleLabel.Render(p.Name), ui.StyleDim.Render(p.Schedule)))
-		}
+		b.WriteString("\n  " + ui.StyleBold.Render("Chrome MCP") + "\n")
+		b.WriteString("    Chrome MCP configured in Claude Code\n")
+		b.WriteString("    Claude can now read Gmail, Discord, Zalo, Messenger, Slack\n")
+		b.WriteString("    via Chrome browser automation\n")
 	}
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCross.Render(), m.err.Error()))
@@ -105,7 +101,7 @@ func (m activateModel) View() string {
 }
 
 type amServerReadyMsg struct{ info *AMServerInfo }
-type pollersReadyMsg struct{ pollers []ui.PollerInfo }
+type chromeMCPReadyMsg struct{}
 
 func doStartAMServer() tea.Cmd {
 	return func() tea.Msg {
@@ -117,12 +113,14 @@ func doStartAMServer() tea.Cmd {
 	}
 }
 
-func doInstallPollers(apiKey string) tea.Cmd {
+func doConfigureChromeMCP() tea.Cmd {
 	return func() tea.Msg {
-		pollers, err := InstallPollers(apiKey)
-		if err != nil {
+		// Clean up old cron pollers
+		RemoveOldPollers()
+		// Configure Chrome MCP for Claude Code
+		if err := ConfigureChromeMCP(); err != nil {
 			return ui.ErrMsg{Err: err}
 		}
-		return pollersReadyMsg{pollers: pollers}
+		return chromeMCPReadyMsg{}
 	}
 }

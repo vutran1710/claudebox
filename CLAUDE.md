@@ -5,6 +5,7 @@ This is a dedicated remote development server. Supports deployment to Railway or
 ## Installed Tools
 
 - **Claude Code CLI** — AI coding assistant (runs with `--dangerously-skip-permissions` for full autonomy)
+- **Chrome MCP** — browser automation via Chrome extension + MCP server (port 7331)
 - **Agent Browser** — headless browser automation CLI for testing web apps
 - **Playwright** — browser automation and end-to-end testing framework
 - **GitHub CLI** (`gh`) — GitHub operations
@@ -116,6 +117,57 @@ DISPLAY=:99 npx playwright test --headed
 
 Ports: noVNC web viewer on `6080`, VNC server on `5900`.
 Set `ENABLE_VNC=true` env var to auto-start on boot.
+
+## Chrome MCP (Message Polling)
+
+Chrome MCP provides browser automation via an MCP server connected to the Chrome extension.
+Use it to read and interact with web apps: Gmail, Discord, Zalo, Messenger, Slack.
+
+Skills reference: `/home/claude/.claude/chrome-mcp-skills.md`
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `tabs_list` | List all open Chrome tabs |
+| `tab_create` | Open a new tab with URL |
+| `tab_navigate` | Navigate a tab to a URL |
+| `tab_close` | Close a tab |
+| `tab_switch` | Focus/activate a tab |
+| `page_read` | Read page content (modes: text, interactive, accessibility) |
+| `page_click` | Click element by CSS selector or coordinates |
+| `page_type` | Type text into an element |
+| `page_screenshot` | Capture screenshot (base64 PNG) |
+| `page_eval` | Execute JS via DevTools Protocol (bypasses CSP) |
+
+### Message checking workflow
+
+1. Navigate to each app (Gmail, Discord, Zalo, etc.)
+2. Use `page_eval` with the JS snippets from the skills reference to extract messages
+3. Push structured messages to am-server:
+
+```bash
+curl -X POST http://localhost:8090/ingest \
+  -H "X-API-Key: $AM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '[{"source":"gmail","sender":"Name","subject":"Subject","preview":"Message..."}]'
+```
+
+### Key patterns
+
+- Gmail toolbar buttons need `realClick()` (mousedown + mouseup + click)
+- Discord hashes class names — use `[class*="message_"]` partial matches
+- Zalo conversation items are `.conv-item` class
+- Messenger E2EE chats cannot be read (content is encrypted in DOM)
+- Use `page_read mode: "accessibility"` as fallback when selectors break
+
+### Replying to messages
+
+When asked to reply to a message:
+1. Navigate to the correct app and conversation
+2. Find and click the message input
+3. Use `document.execCommand('insertText', false, 'message')` via `page_eval` for contenteditable editors
+4. Click send or press Enter
 
 ## Conventions
 

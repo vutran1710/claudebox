@@ -155,6 +155,27 @@ fi`
 				return err
 			},
 		},
+		{
+			Name: "Chrome MCP",
+			Check: func() bool {
+				return shell.FileExists("/opt/chrome-mcp/server/index.js") &&
+					shell.FileExists("/opt/chrome-mcp/extension/background.js")
+			},
+			Install: func(ctx context.Context) error {
+				script := `
+REPO="vutran1710/chrome-mcp"
+DOWNLOAD_URL=$(curl -sfL "https://api.github.com/repos/${REPO}/releases/latest" | grep -o 'https://[^"]*chrome-mcp-.*\.tar\.gz[^"]*' | head -1)
+if [ -n "$DOWNLOAD_URL" ]; then
+    mkdir -p /opt/chrome-mcp
+    curl -sfL "$DOWNLOAD_URL" | tar -xz -C /opt/chrome-mcp
+else
+    echo "Failed to find chrome-mcp release" >&2
+    exit 1
+fi`
+				_, err := shell.RunShell(ctx, script)
+				return err
+			},
+		},
 	}
 }
 

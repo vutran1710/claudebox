@@ -108,13 +108,19 @@ jobs:
               echo "$(echo '__B64_SSH_KEY__' | base64 -d)" >> /root/.ssh/authorized_keys
               chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
               export GITHUB_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
-              CBX_URL=$(curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" \
+              ASSET_URL=$(curl -sL -H "Authorization: token ${GITHUB_TOKEN}" \
                 "https://api.github.com/repos/__REPO__/releases/latest" \
-                | grep -o 'https://[^"]*cbx-linux-amd64[^"]*' | head -1)
-              if [ -n "$CBX_URL" ]; then
-                curl -sfL -H "Authorization: token ${GITHUB_TOKEN}" \
+                | grep -o '"url": *"[^"]*cbx-linux-amd64[^"]*"' | head -1 | grep -o 'https://[^"]*')
+              if [ -n "$ASSET_URL" ]; then
+                curl -sL -H "Authorization: token ${GITHUB_TOKEN}" \
                   -H "Accept: application/octet-stream" \
-                  "$CBX_URL" -o /usr/local/bin/cbx
+                  "$ASSET_URL" -o /usr/local/bin/cbx
+                chmod +x /usr/local/bin/cbx
+              else
+                echo "WARN: Could not download cbx from release, trying direct URL..."
+                curl -sL -H "Authorization: token ${GITHUB_TOKEN}" \
+                  "https://github.com/__REPO__/releases/latest/download/cbx-linux-amd64" \
+                  -o /usr/local/bin/cbx
                 chmod +x /usr/local/bin/cbx
               fi
               git clone --branch __REF__ "https://${GITHUB_TOKEN}@github.com/__REPO__.git" /opt/claudebox

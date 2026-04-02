@@ -134,13 +134,13 @@ apt-get update && apt-get install -y \
 			Check: func() bool { return shell.Which("cloudflared") },
 			Install: func(ctx context.Context) error {
 				_, err := shell.RunShell(ctx, `
-for i in $(seq 1 30); do
-    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
-    sleep 2
+curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+for i in $(seq 1 10); do
+    dpkg -i /tmp/cloudflared.deb 2>&1 && break
+    echo "dpkg attempt $i failed, waiting for lock..."
+    sleep 5
 done
-curl -sL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" \
-    && dpkg -i /tmp/cloudflared.deb \
-    && rm -f /tmp/cloudflared.deb`)
+rm -f /tmp/cloudflared.deb`)
 				return err
 			},
 		},

@@ -41,7 +41,8 @@ cd /workspace && claude
 
 | Secret | Required | Purpose |
 |--------|----------|---------|
-| `DIGITALOCEAN_ACCESS_TOKEN` | Yes | DigitalOcean API token |
+| `DIGITALOCEAN_ACCESS_TOKEN` | For DigitalOcean | DigitalOcean API token |
+| `RAILWAY_TOKEN` | For Railway | Railway API token |
 | `SSH_PUBLIC_KEY` | Yes | Your SSH public key |
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**

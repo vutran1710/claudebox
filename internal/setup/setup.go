@@ -215,17 +215,17 @@ type userCreatedMsg struct{}
 
 func waitForCloudInit() tea.Cmd {
 	return func() tea.Msg {
-		// Wait until cloud-init finishes (no more dpkg/apt locks)
-		for i := 0; i < 60; i++ {
+		// Wait for cloud-init to fully finish
+		shell.RunShellTimeout(5*time.Minute,
+			`cloud-init status --wait 2>/dev/null || true`)
+		// Also wait for any lingering dpkg locks
+		for i := 0; i < 30; i++ {
 			res, _ := shell.RunShellTimeout(5*time.Second,
 				`fuser /var/lib/dpkg/lock-frontend 2>/dev/null`)
 			if res.ExitCode != 0 {
-				// No lock held — cloud-init apt is done
-				// Wait a bit more for any post-apt cleanup
-				time.Sleep(2 * time.Second)
 				return cloudInitDoneMsg{}
 			}
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 		}
 		return cloudInitDoneMsg{}
 	}

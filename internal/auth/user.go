@@ -41,6 +41,21 @@ chmod 600 /home/claude/.ssh/authorized_keys 2>/dev/null || true`)
 	shell.RunShell(ctx, `cp -r /root/.claude /home/claude/.claude 2>/dev/null || true`)
 	shell.RunShell(ctx, `mkdir -p /home/claude/.config && cp -r /root/.config/gh /home/claude/.config/gh 2>/dev/null || true`)
 
+	// Configure Chrome Lite MCP if installed
+	mcpConfig := `{
+  "mcpServers": {
+    "chrome": {
+      "command": "node",
+      "args": ["/opt/chrome-lite-mcp/server/index.js"],
+      "env": {}
+    }
+  }
+}`
+	if _, err := os.Stat("/opt/chrome-lite-mcp/server/index.js"); err == nil {
+		os.WriteFile("/home/claude/.claude.json", []byte(mcpConfig), 0644)
+		shell.RunShell(ctx, `cp /opt/chrome-lite-mcp/docs/skills.md /home/claude/.claude/chrome-lite-mcp-skills.md 2>/dev/null || true`)
+	}
+
 	bashrc := `export PATH="/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME=/home/claude
 claude() {

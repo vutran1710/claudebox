@@ -67,6 +67,7 @@ Run as claude user.
 func codeCmd() *cobra.Command {
 	var repo string
 	var project string
+	var headless bool
 
 	cmd := &cobra.Command{
 		Use:   "code [name]",
@@ -79,19 +80,20 @@ Examples:
   cbx code my-project                   # named session in /workspace
   cbx code -g vutran1710/claudebox      # clone/find repo, session named "claudebox"
   cbx code -p my-app                    # open existing project in /workspace/my-app
-  cbx code my-name -g owner/repo        # custom name, repo dir`,
+  cbx code --headless -g owner/repo     # non-interactive (for use from another Claude session)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := ""
 			if len(args) > 0 {
 				name = args[0]
 			}
-			return code.Run(name, repo, project)
+			return code.Run(name, repo, project, headless)
 		},
 	}
 
 	cmd.Flags().StringVarP(&repo, "github", "g", "", "GitHub repo (owner/repo) to clone or find")
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Existing project directory in /workspace")
+	cmd.Flags().BoolVar(&headless, "headless", false, "Non-interactive mode (no TUI)")
 	return cmd
 }
 

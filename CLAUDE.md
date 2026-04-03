@@ -8,13 +8,15 @@ You are the control plane. Users interact with you from their phone via Remote C
 You can manage the server using `cbx` commands:
 
 ```bash
-cbx code -g owner/repo        # Clone/find a GitHub repo and start a new Claude session
-cbx code -p project-dir       # Start a session for an existing project in /workspace
-cbx code my-session            # Start a named session in /workspace
-cbx activate                   # Start am-server + configure Chrome Lite MCP
-cbx activate --poller          # Also start a message polling session
-cbx status                     # Show health of all services and sessions
+cbx code --headless -g owner/repo    # Clone/find a GitHub repo and start a new Claude session
+cbx code --headless -p project-dir   # Start a session for an existing project in /workspace
+cbx code --headless my-session       # Start a named session in /workspace
+cbx activate                         # Start am-server + configure Chrome Lite MCP
+cbx activate --poller                # Also start a message polling session
+cbx status                           # Show health of all services and sessions
 ```
+
+IMPORTANT: Always use `--headless` when running `cbx code` — you are not in an interactive terminal.
 
 When the user asks to "work on repo X" or "start a session for project Y", use these commands.
 Each `cbx code` returns a Remote Control URL — share it with the user.

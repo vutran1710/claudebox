@@ -14,29 +14,106 @@ import (
 	"github.com/vutran1710/claudebox/internal/ui"
 )
 
-type model struct {
-	spinner spinner.Model
-	name    string
-	repo    string
-	project string
-	workDir string
-	rcURL   string
-	status  string
-	done    bool
-	err     error
+const workspace = "/workspace"
+
+// ResolveName determines the session name from the inputs.
+func ResolveName(name, repo, project string) string {
+	if name != "" {
+		return name
+	}
+	if repo != "" {
+		parts := strings.Split(repo, "/")
+		return parts[len(parts)-1]
+	}
+	if project != "" {
+		return project
+	}
+	return fmt.Sprintf("claude-%d", time.Now().Unix())
 }
 
-func Run(name string, repo string, project string) error {
-	if name == "" {
-		if repo != "" {
-			parts := strings.Split(repo, "/")
-			name = parts[len(parts)-1]
-		} else if project != "" {
-			name = project
-		} else {
-			name = fmt.Sprintf("claude-%d", time.Now().Unix())
+// ResolveWorkDir finds or clones the working directory.
+// Returns (dir, status, error).
+func ResolveWorkDir(repo, project string) (string, string, error) {
+	if repo != "" {
+		return resolveRepoDir(repo)
+	}
+	if project != "" {
+		return resolveProjectDir(project)
+	}
+	return "", "", nil
+}
+
+func resolveRepoDir(repo string) (string, string, error) {
+	parts := strings.Split(repo, "/")
+	repoName := parts[len(parts)-1]
+
+	// Check if repo already exists
+	for _, dir := range []string{
+		filepath.Join(workspace, repoName),
+		filepath.Join(workspace, repo),
+	} {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+				return dir, fmt.Sprintf("Found repo at %s", dir), nil
+			}
 		}
 	}
+
+	// Clone it
+	cloneDir := filepath.Join(workspace, repoName)
+	cloneURL := fmt.Sprintf("https://github.com/%s.git", repo)
+	_, err := shell.RunShellTimeout(2*time.Minute,
+		fmt.Sprintf(`git clone %s %s`, cloneURL, cloneDir))
+	if err != nil {
+		return "", "", fmt.Errorf("failed to clone %s: %w", repo, err)
+	}
+	return cloneDir, fmt.Sprintf("Cloned %s", repo), nil
+}
+
+func resolveProjectDir(project string) (string, string, error) {
+	dir := filepath.Join(workspace, project)
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return dir, fmt.Sprintf("Found project at %s", dir), nil
+	}
+	return "", "", fmt.Errorf("project not found: %s", dir)
+}
+
+// RunHeadless runs without TUI — suitable for non-interactive use (e.g., from another Claude session).
+func RunHeadless(name, repo, project string) error {
+	name = ResolveName(name, repo, project)
+
+	workDir, status, err := ResolveWorkDir(repo, project)
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		fmt.Println(status)
+	}
+
+	fmt.Printf("Starting session '%s'...\n", name)
+	rcURL, err := session.StartClaudeSession(name, workDir)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Session '%s' started\n", name)
+	if workDir != "" {
+		fmt.Printf("Working dir: %s\n", workDir)
+	}
+	if rcURL != "" {
+		fmt.Printf("Remote Control: %s\n", rcURL)
+	}
+	fmt.Printf("Attach: tmux attach -t %s\n", name)
+	return nil
+}
+
+// Run starts the TUI version.
+func Run(name, repo, project string, headless bool) error {
+	if headless {
+		return RunHeadless(name, repo, project)
+	}
+
+	name = ResolveName(name, repo, project)
 	m := model{
 		spinner: ui.NewSpinner(),
 		name:    name,
@@ -50,12 +127,23 @@ func Run(name string, repo string, project string) error {
 	return nil
 }
 
+// TUI model
+
+type model struct {
+	spinner spinner.Model
+	name    string
+	repo    string
+	project string
+	workDir string
+	rcURL   string
+	status  string
+	done    bool
+	err     error
+}
+
 func (m model) Init() tea.Cmd {
-	if m.repo != "" {
-		return tea.Batch(m.spinner.Tick, resolveRepo(m.repo))
-	}
-	if m.project != "" {
-		return tea.Batch(m.spinner.Tick, resolveProject(m.project))
+	if m.repo != "" || m.project != "" {
+		return tea.Batch(m.spinner.Tick, resolveDir(m.repo, m.project))
 	}
 	return tea.Batch(m.spinner.Tick, startSession(m.name, ""))
 }
@@ -70,7 +158,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case repoResolvedMsg:
+	case dirResolvedMsg:
 		m.workDir = msg.dir
 		m.status = msg.status
 		return m, startSession(m.name, m.workDir)
@@ -112,61 +200,25 @@ func (m model) View() string {
 	return b.String() + "\n"
 }
 
-type repoResolvedMsg struct {
+// Tea messages
+
+type dirResolvedMsg struct {
 	dir    string
 	status string
 }
 type sessionReadyMsg struct{ rcURL string }
 
-func resolveProject(project string) tea.Cmd {
+func resolveDir(repo, project string) tea.Cmd {
 	return func() tea.Msg {
-		workspace := "/workspace"
-		dir := filepath.Join(workspace, project)
-
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return repoResolvedMsg{dir: dir, status: fmt.Sprintf("Found project at %s", dir)}
-		}
-
-		return ui.ErrMsg{Err: fmt.Errorf("project not found: %s", dir)}
-	}
-}
-
-func resolveRepo(repo string) tea.Cmd {
-	return func() tea.Msg {
-		// Extract repo name from "owner/repo"
-		parts := strings.Split(repo, "/")
-		repoName := parts[len(parts)-1]
-		workspace := "/workspace"
-
-		// Check if repo already exists in workspace
-		candidates := []string{
-			filepath.Join(workspace, repoName),
-			filepath.Join(workspace, repo),
-		}
-
-		for _, dir := range candidates {
-			if info, err := os.Stat(dir); err == nil && info.IsDir() {
-				// Check if it's a git repo
-				if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-					return repoResolvedMsg{dir: dir, status: fmt.Sprintf("Found repo at %s", dir)}
-				}
-			}
-		}
-
-		// Not found — clone it
-		cloneDir := filepath.Join(workspace, repoName)
-		cloneURL := fmt.Sprintf("https://github.com/%s.git", repo)
-		_, err := shell.RunShellTimeout(2*time.Minute,
-			fmt.Sprintf(`git clone %s %s`, cloneURL, cloneDir))
+		dir, status, err := ResolveWorkDir(repo, project)
 		if err != nil {
-			return ui.ErrMsg{Err: fmt.Errorf("failed to clone %s: %w", repo, err)}
+			return ui.ErrMsg{Err: err}
 		}
-
-		return repoResolvedMsg{dir: cloneDir, status: fmt.Sprintf("Cloned %s", repo)}
+		return dirResolvedMsg{dir: dir, status: status}
 	}
 }
 
-func startSession(name string, workDir string) tea.Cmd {
+func startSession(name, workDir string) tea.Cmd {
 	return func() tea.Msg {
 		rcURL, err := session.StartClaudeSession(name, workDir)
 		if err != nil {

@@ -14,9 +14,14 @@ const (
 	WorkDir    = "/workspace"
 )
 
-// StartClaudeSession spawns a new Claude Code tmux session.
-// Returns the session name and remote control URL.
-func StartClaudeSession(name string) (remoteControlURL string, err error) {
+// StartClaudeSession spawns a new Claude Code tmux session in the given directory.
+// If workDir is empty, defaults to /workspace.
+// Returns the remote control URL.
+func StartClaudeSession(name string, workDir string) (remoteControlURL string, err error) {
+	if workDir == "" {
+		workDir = WorkDir
+	}
+
 	// Kill existing session with this name
 	shell.RunShellTimeout(5*time.Second,
 		fmt.Sprintf(`tmux kill-session -t %s 2>/dev/null || true`, name))
@@ -24,7 +29,7 @@ func StartClaudeSession(name string) (remoteControlURL string, err error) {
 	// Spawn claude in a new tmux session
 	_, err = shell.RunShellTimeout(10*time.Second,
 		fmt.Sprintf(`cd %s && tmux new-session -d -s %s '%s --dangerously-skip-permissions'`,
-			WorkDir, name, ClaudeBin))
+			workDir, name, ClaudeBin))
 	if err != nil {
 		return "", fmt.Errorf("failed to start Claude session: %w", err)
 	}

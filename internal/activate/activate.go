@@ -155,7 +155,7 @@ func doConfigureChromeMCP() tea.Cmd {
 
 func doStartClaudeSession() tea.Cmd {
 	return func() tea.Msg {
-		rcURL, err := session.StartClaudeSession("claude-main")
+		rcURL, err := session.StartClaudeSession("claude-main", "")
 		if err != nil {
 			return ui.ErrMsg{Err: err}
 		}
@@ -166,7 +166,7 @@ func doStartClaudeSession() tea.Cmd {
 func doStartPollerSession() tea.Cmd {
 	return func() tea.Msg {
 		// Start a second Claude session for message polling
-		_, err := session.StartClaudeSession("claude-poller")
+		_, err := session.StartClaudeSession("claude-poller", "")
 		if err != nil {
 			return ui.ErrMsg{Err: err}
 		}

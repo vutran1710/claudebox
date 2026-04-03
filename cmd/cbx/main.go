@@ -32,10 +32,24 @@ func main() {
 		}
 	case "code":
 		name := ""
-		if len(os.Args) > 2 && os.Args[2] != "" && os.Args[2][0] != '-' {
-			name = os.Args[2]
+		repo := getFlagValue("--github")
+		// First positional arg (not a flag or flag value) is the session name
+		skipNext := false
+		for _, arg := range os.Args[2:] {
+			if skipNext {
+				skipNext = false
+				continue
+			}
+			if arg == "--github" {
+				skipNext = true
+				continue
+			}
+			if arg[0] != '-' {
+				name = arg
+				break
+			}
 		}
-		if err := code.Run(name); err != nil {
+		if err := code.Run(name, repo); err != nil {
 			fmt.Fprintf(os.Stderr, "code failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -60,13 +74,22 @@ func hasFlag(flag string) bool {
 	return false
 }
 
+func getFlagValue(flag string) string {
+	for i, arg := range os.Args[2:] {
+		if arg == flag && i+1 < len(os.Args[2:]) {
+			return os.Args[2+i+1]
+		}
+	}
+	return ""
+}
+
 func printUsage() {
 	fmt.Println("cbx — ClaudeBox CLI")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  cbx setup                Install tools, authenticate Claude, start VNC")
 	fmt.Println("  cbx activate [--poller]  Start am-server, Claude session, optional poller")
-	fmt.Println("  cbx code [name]          Spawn a new Claude Code session")
+	fmt.Println("  cbx code [name] [--github owner/repo]  Spawn Claude Code session")
 	fmt.Println("  cbx status               Show status of all services")
 	fmt.Println("  cbx help                 Show detailed help")
 	fmt.Println("  cbx version              Show version")
@@ -90,10 +113,19 @@ SERVICES + SESSIONS:
 
     --poller    Also spawn a second Claude session for message polling
 
-  cbx code [name]
+  cbx code [name] [--github owner/repo]
     Spawn a new Claude Code tmux session with remote-control and
-    dangerously-skip-permissions. Optional name (default: claude-<timestamp>).
-    Run as claude user: ssh -t claude@<host> 'cbx code my-project'
+    dangerously-skip-permissions.
+
+    --github owner/repo    Clone or find the repo in /workspace, then
+                           start the session in that directory.
+                           Session name defaults to the repo name.
+
+    Examples:
+      cbx code                                    # session in /workspace
+      cbx code my-project                         # named session in /workspace
+      cbx code --github vutran1710/claudebox      # clone/find, session named "claudebox"
+      cbx code my-name --github owner/repo        # custom name, repo dir
 
     Prints the remote control URL for mobile access.
 

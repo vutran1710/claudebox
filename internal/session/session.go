@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	ClaudeBin  = "/usr/local/share/devbox-tools/bin/claude"
-	WorkDir    = "/workspace"
+	ClaudeBin         = "/usr/local/share/devbox-tools/bin/claude"
+	WorkDir           = "/workspace"
+	MasterSessionName = "claude-master"
+	ClaudeUser        = "claude"
 )
 
 // StartClaudeSession spawns a new Claude Code tmux session in the given directory.
@@ -80,6 +82,78 @@ ready:
 	}
 
 	return remoteControlURL, nil
+}
+
+// StartMasterSession spawns the master Claude session as the claude user.
+// Called from setup (which runs as root), so uses su to switch user.
+func StartMasterSession() (remoteControlURL string, err error) {
+	// Kill any existing master session
+	shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`su - %s -c "tmux kill-session -t %s 2>/dev/null || true"`, ClaudeUser, MasterSessionName))
+
+	// Spawn as claude user
+	_, err = shell.RunShellTimeout(10*time.Second,
+		fmt.Sprintf(`su - %s -c "cd %s && tmux new-session -d -s %s '%s --dangerously-skip-permissions'"`,
+			ClaudeUser, WorkDir, MasterSessionName, ClaudeBin))
+	if err != nil {
+		return "", fmt.Errorf("failed to start master session: %w", err)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	// Navigate startup prompts
+	for i := 0; i < 10; i++ {
+		pane := capturePaneAsUser(ClaudeUser, MasterSessionName)
+
+		switch {
+		case strings.Contains(pane, "Choose the text style"):
+			sendKeysAsUser(ClaudeUser, MasterSessionName, "Enter")
+		case strings.Contains(pane, "trust this folder"):
+			sendKeysAsUser(ClaudeUser, MasterSessionName, "Enter")
+		case strings.Contains(pane, "bypass permissions on"):
+			goto ready
+		case strings.Contains(pane, "What can I help"):
+			goto ready
+		case strings.Contains(pane, ">"):
+			goto ready
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+ready:
+	// Enable remote control
+	sendKeysAsUser(ClaudeUser, MasterSessionName, "'/remote-control' Enter")
+	time.Sleep(3 * time.Second)
+
+	pane := capturePaneAsUser(ClaudeUser, MasterSessionName)
+	if strings.Contains(pane, "Enable Remote Control") {
+		sendKeysAsUser(ClaudeUser, MasterSessionName, "Enter")
+		time.Sleep(5 * time.Second)
+	}
+
+	// Extract remote control URL
+	for i := 0; i < 10; i++ {
+		pane = capturePaneAsUser(ClaudeUser, MasterSessionName)
+		re := regexp.MustCompile(`https://claude\.(com|ai)/code/\S+`)
+		if url := re.FindString(pane); url != "" {
+			remoteControlURL = url
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	return remoteControlURL, nil
+}
+
+func sendKeysAsUser(user, session, keys string) {
+	shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`su - %s -c "tmux send-keys -t %s %s"`, user, session, keys))
+}
+
+func capturePaneAsUser(user, session string) string {
+	res, _ := shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`su - %s -c "tmux capture-pane -t %s -p -S -50"`, user, session))
+	return res.Stdout
 }
 
 // IsSessionRunning checks if a tmux session exists.

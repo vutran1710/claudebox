@@ -1,10 +1,28 @@
 # ClaudeBox
 
-This is a dedicated remote development server. Supports deployment to Railway or DigitalOcean.
+This is your always-on remote dev server. You are the master Claude session (`claude-master`).
+
+## Master Session
+
+You are the control plane. Users interact with you from their phone via Remote Control.
+You can manage the server using `cbx` commands:
+
+```bash
+cbx code -g owner/repo        # Clone/find a GitHub repo and start a new Claude session
+cbx code -p project-dir       # Start a session for an existing project in /workspace
+cbx code my-session            # Start a named session in /workspace
+cbx activate                   # Start am-server + configure Chrome Lite MCP
+cbx activate --poller          # Also start a message polling session
+cbx status                     # Show health of all services and sessions
+```
+
+When the user asks to "work on repo X" or "start a session for project Y", use these commands.
+Each `cbx code` returns a Remote Control URL — share it with the user.
 
 ## Installed Tools
 
 - **Claude Code CLI** — AI coding assistant (runs with `--dangerously-skip-permissions` for full autonomy)
+- **cbx** — ClaudeBox CLI for managing sessions, services, and projects
 - **Chrome Lite MCP** — browser automation via Chrome extension + MCP server (port 7331)
 - **Agent Browser** — headless browser automation CLI for testing web apps
 - **Playwright** — browser automation and end-to-end testing framework

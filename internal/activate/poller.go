@@ -2,6 +2,7 @@ package activate
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -9,8 +10,7 @@ import (
 )
 
 const (
-	ChromeMCPConfig = `/home/claude/.claude.json`
-	ChromeMCPEntry  = `{
+	ChromeMCPEntry = `{
   "mcpServers": {
     "chrome": {
       "command": "node",
@@ -22,40 +22,39 @@ const (
 )
 
 // ConfigureChromeMCP sets up the Chrome MCP server in Claude Code's config.
-// This replaces the old cron-based pollers — Claude Code now reads messages
-// directly via Chrome MCP tools (page_eval, page_read, etc.) on demand.
 func ConfigureChromeMCP() error {
-	// Ensure .claude directory exists
-	_, err := shell.RunShellTimeout(10*time.Second,
-		`mkdir -p /home/claude/.claude && chown claude:claude /home/claude/.claude`)
-	if err != nil {
-		return fmt.Errorf("failed to create .claude dir: %w", err)
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/home/claude"
 	}
+	configPath := home + "/.claude.json"
+
+	// Ensure .claude directory exists
+	os.MkdirAll(home+"/.claude", 0755)
 
 	// Write MCP config if not already present
-	res, _ := shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
-	if !strings.Contains(res.Stdout, "chrome-lite-mcp") {
-		_, err = shell.RunShellTimeout(10*time.Second,
-			fmt.Sprintf(`echo '%s' > %s && chown claude:claude %s`,
-				ChromeMCPEntry, ChromeMCPConfig, ChromeMCPConfig))
-		if err != nil {
+	existing, _ := os.ReadFile(configPath)
+	if !strings.Contains(string(existing), "chrome-lite-mcp") {
+		if err := os.WriteFile(configPath, []byte(ChromeMCPEntry), 0644); err != nil {
 			return fmt.Errorf("failed to write MCP config: %w", err)
 		}
 	}
 
-	// Copy skills.md to a location Claude Code can reference
-	_, _ = shell.RunShellTimeout(10*time.Second,
-		`cp /opt/chrome-lite-mcp/docs/skills.md /home/claude/.claude/chrome-lite-mcp-skills.md 2>/dev/null && chown claude:claude /home/claude/.claude/chrome-lite-mcp-skills.md`)
+	// Copy skills reference
+	shell.RunShellTimeout(5*time.Second,
+		fmt.Sprintf(`cp /opt/chrome-lite-mcp/docs/skills.md %s/.claude/chrome-lite-mcp-skills.md 2>/dev/null || true`, home))
 
 	return nil
 }
 
 // IsChromeMCPConfigured checks if Chrome MCP is set up in Claude Code's config.
 func IsChromeMCPConfigured() bool {
-	res, _ := shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`cat %s 2>/dev/null`, ChromeMCPConfig))
-	return strings.Contains(res.Stdout, "chrome-lite-mcp")
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/home/claude"
+	}
+	data, _ := os.ReadFile(home + "/.claude.json")
+	return strings.Contains(string(data), "chrome-lite-mcp")
 }
 
 // RemoveOldPollers cleans up any legacy cron-based pollers.

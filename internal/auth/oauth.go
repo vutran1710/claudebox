@@ -85,7 +85,8 @@ loginDone:
 	waitForPattern(`claude\.(com|ai)/code`, 20*time.Second)
 	rcURL = extractRemoteControlURL()
 
-	renameSession("claude")
+	// Kill the login session — it ran as root, actual sessions should run as claude user
+	killSession()
 
 	return &OAuthResult{RemoteControlURL: rcURL}, nil
 }

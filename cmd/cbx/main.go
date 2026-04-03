@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/vutran1710/claudebox/internal/activate"
+	"github.com/vutran1710/claudebox/internal/code"
 	"github.com/vutran1710/claudebox/internal/setup"
 	"github.com/vutran1710/claudebox/internal/status"
 )
@@ -24,8 +25,18 @@ func main() {
 			os.Exit(1)
 		}
 	case "activate":
-		if err := activate.Run(); err != nil {
+		withPoller := hasFlag("--poller")
+		if err := activate.Run(withPoller); err != nil {
 			fmt.Fprintf(os.Stderr, "activate failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "code":
+		name := ""
+		if len(os.Args) > 2 && os.Args[2] != "" && os.Args[2][0] != '-' {
+			name = os.Args[2]
+		}
+		if err := code.Run(name); err != nil {
+			fmt.Fprintf(os.Stderr, "code failed: %v\n", err)
 			os.Exit(1)
 		}
 	case "status":
@@ -40,15 +51,25 @@ func main() {
 	}
 }
 
+func hasFlag(flag string) bool {
+	for _, arg := range os.Args[2:] {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
+}
+
 func printUsage() {
 	fmt.Println("cbx — ClaudeBox CLI")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  cbx setup      Install tools, authenticate Claude, start VNC")
-	fmt.Println("  cbx activate   Start am-server and configure Chrome Lite MCP (optional)")
-	fmt.Println("  cbx status     Show status of all services")
-	fmt.Println("  cbx help       Show detailed help")
-	fmt.Println("  cbx version    Show version")
+	fmt.Println("  cbx setup                Install tools, authenticate Claude, start VNC")
+	fmt.Println("  cbx activate [--poller]  Start am-server, Claude session, optional poller")
+	fmt.Println("  cbx code [name]          Spawn a new Claude Code session")
+	fmt.Println("  cbx status               Show status of all services")
+	fmt.Println("  cbx help                 Show detailed help")
+	fmt.Println("  cbx version              Show version")
 }
 
 func printHelp() {
@@ -58,36 +79,38 @@ REQUIRED (core dev server):
 
   cbx setup
     Installs all dev tools, authenticates Claude Code, starts VNC + Chrome.
-    After this, you can SSH in and start coding immediately.
+    Run as root: ssh -t root@<host> 'cbx setup'
 
-    Installed tools: Claude Code CLI, Node.js, Python, Rust, Go, Docker,
-    GitHub CLI, Vercel CLI, Playwright, Chromium, Cloudflared, and more.
+SERVICES + SESSIONS:
 
-    This is all you need for a remote dev environment.
+  cbx activate [--poller]
+    Starts am-server, configures Chrome Lite MCP, and spawns a Claude Code
+    session with remote-control and dangerously-skip-permissions enabled.
+    Run as claude user: ssh -t claude@<host> 'cbx activate'
 
-OPTIONAL (message polling):
+    --poller    Also spawn a second Claude session for message polling
 
-  cbx activate
-    Starts am-server (message aggregation) and configures Chrome Lite MCP
-    for Claude Code. Only needed if you want Claude to read messages from
-    Gmail, Discord, Zalo, Messenger, or Slack.
+  cbx code [name]
+    Spawn a new Claude Code tmux session with remote-control and
+    dangerously-skip-permissions. Optional name (default: claude-<timestamp>).
+    Run as claude user: ssh -t claude@<host> 'cbx code my-project'
 
-    Before running:
-      1. Open the VNC URL from 'cbx setup' output
-      2. Log into your messaging apps in Chrome
-      3. Then run 'cbx activate'
-
-    After activating, Claude Code can:
-      - Read messages from your apps via Chrome Lite MCP
-      - Push structured messages to am-server
-      - Reply to messages when you ask
+    Prints the remote control URL for mobile access.
 
 OTHER:
 
   cbx status
     Shows health of all services: Claude Code, VNC, Chrome, am-server,
-    and Chrome Lite MCP configuration.
+    Chrome Lite MCP, and active tmux sessions.
 
   cbx version
-    Print the cbx version.`)
+    Print the cbx version.
+
+WORKFLOW:
+
+  1. Deploy via GitHub Actions
+  2. ssh -t root@<host> 'cbx setup'       # install tools + authenticate
+  3. Log into apps via VNC (optional)
+  4. ssh -t claude@<host> 'cbx activate'   # start services + Claude session
+  5. Access via Remote Control URL or: ssh claude@<host> 'tmux attach -t claude-main'`)
 }

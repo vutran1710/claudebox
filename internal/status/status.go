@@ -5,6 +5,7 @@ import (
 
 	"github.com/vutran1710/claudebox/internal/activate"
 	"github.com/vutran1710/claudebox/internal/auth"
+	"github.com/vutran1710/claudebox/internal/session"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
 )
@@ -62,8 +63,44 @@ func Run() {
 	if chromeMCP {
 		fmt.Println(ui.StatusLine("Chrome Lite MCP", true, "configured"))
 	} else {
-		fmt.Println(ui.StatusLine("Chrome Lite MCP", false, "not configured — run: cbx activate"))
+		fmt.Println(ui.StatusLine("Chrome Lite MCP", false, "not configured"))
 	}
 
 	fmt.Println()
+	fmt.Println("  " + ui.StyleBold.Render("Sessions"))
+	sessions := session.ListSessions()
+	if sessions == "" {
+		fmt.Println("    " + ui.StyleDim.Render("no active sessions"))
+	} else {
+		for _, line := range splitLines(sessions) {
+			if line != "" {
+				fmt.Printf("    %s %s\n", ui.StyleCheck.Render(), line)
+			}
+		}
+	}
+	fmt.Println()
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	for _, l := range []byte(s) {
+		if l == '\n' {
+			lines = append(lines, "")
+		}
+	}
+	// Simple split
+	result := make([]string, 0)
+	current := ""
+	for _, c := range s {
+		if c == '\n' {
+			result = append(result, current)
+			current = ""
+		} else {
+			current += string(c)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -106,9 +105,3 @@ func statusCmd() *cobra.Command {
 	}
 }
 
-func init() {
-	// Customize version template
-	cobra.AddTemplateFunc("versionStr", func() string {
-		return fmt.Sprintf("cbx %s", version)
-	})
-}

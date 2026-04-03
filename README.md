@@ -12,24 +12,24 @@ Deploy Claude Code to a cloud server and access it from your phone, tablet, or a
 
 - Work from anywhere — phone, iPad, coffee shop laptop
 - Claude Code runs 24/7 with full autonomy, pre-authenticated
-- Browser automation reads your Gmail, Discord, Zalo, Messenger via Chrome Lite MCP
-- Messages aggregated to am-server, queryable anytime
+- Browser automation reads your Gmail, Discord, Zalo, Messenger via Chrome Lite MCP (optional)
+- Messages aggregated to am-server, queryable anytime (optional)
 - VNC desktop for visual tasks, tunneled via Cloudflare
 
 ## Quick Start
 
 ```bash
 # 1. Deploy via GitHub Actions (DigitalOcean or Railway)
-# 2. Run setup
-ssh -t root@<host> "cbx setup"
 
-# 3. Log into messaging apps via VNC
-# 4. Activate services
-ssh -t root@<host> "cbx activate"
+# 2. Setup — install tools + authenticate (as root)
+ssh -t root@<host> 'cbx setup'
 
-# 5. Access Claude Code from the official Claude app or SSH
-ssh claude@<host>
-cd /workspace && claude
+# 3. Activate — start Claude Code session (as claude user)
+ssh -t claude@<host> 'cbx activate'
+
+# 4. Access via Remote Control URL printed by activate
+#    or attach directly:
+ssh -t claude@<host> 'tmux attach -t claude-main'
 ```
 
 ## Deploy
@@ -48,7 +48,7 @@ cd /workspace && claude
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**
 4. Choose region and size, click **Run** (defaults to Singapore)
-5. SSH command appears in the workflow summary
+5. Commands with real IP appear in the workflow summary
 
 ### Docker (local)
 
@@ -59,94 +59,63 @@ docker run -d -p 2222:22 -p 6080:6080 \
   claudebox
 ```
 
-## Setup
+## Commands
 
-### Step 1: `cbx setup`
+### `cbx setup` (as root, required)
+
+Installs all dev tools, authenticates Claude Code via OAuth, and starts VNC + Chrome.
 
 ```bash
-ssh -t root@<host> "cbx setup"
+ssh -t root@<host> 'cbx setup'
 ```
 
 This runs a TUI that:
-- Installs all tools (Rust, Node, Go, Python, Docker, Claude CLI, Chrome Lite MCP, etc.)
+- Waits for cloud-init to finish
+- Installs all tools (Cloudflare, Rust, Node, Go, Python, Docker, Claude CLI, Chrome Lite MCP, etc.)
 - Creates the `claude` user with autonomy mode
 - Authenticates Claude Code via OAuth (prints URL, you paste the code)
 - Starts VNC desktop + Chrome (with MCP extension) + Cloudflare tunnel
 
-Output:
+After setup completes, you'll see the VNC URL and password.
 
-```
-  ClaudeBox Setup
+### `cbx activate` (as claude user)
 
-  ✓ System dependencies
-  ✓ Rust 1.84
-  ✓ Python 3.13 + uv
-  ✓ Node.js 22
-  ...
-  ✓ Chrome Lite MCP
-  ✓ am-server
-
-  Open this URL to sign in:
-  https://claude.com/cai/oauth/authorize?...
-
-  Auth code: <paste here>
-
-  ✓ Login successful
-  ✓ VNC + Chrome started
-
-  VNC:      https://xyz.trycloudflare.com/vnc.html
-  Password: tUDvpVIHtS5s
-
-  Next steps:
-    1. Open VNC URL in your browser
-    2. Log into Discord, Gmail, Zalo
-    3. Run: cbx activate
-```
-
-### Step 2: Browser login (manual, one-time)
-
-Open the VNC URL, enter the password. In Chrome, log into:
-- Gmail (personal + work)
-- Discord
-- Zalo (QR code)
-- Messenger (if needed)
-
-### Step 3: `cbx activate`
+Starts services and spawns a Claude Code session.
 
 ```bash
-ssh -t root@<host> "cbx activate"
+# Basic — starts am-server + Claude Code session
+ssh -t claude@<host> 'cbx activate'
+
+# With message poller — also spawns a second session for polling
+ssh -t claude@<host> 'cbx activate --poller'
 ```
 
-Starts am-server (message aggregation) with a Cloudflare tunnel and configures Chrome Lite MCP for Claude Code.
+What it does:
+1. Starts am-server + Cloudflare tunnel
+2. Configures Chrome Lite MCP for Claude Code
+3. Spawns `claude-main` tmux session with remote-control + dangerously-skip-permissions
+4. (with `--poller`) Spawns `claude-poller` session for message polling
 
-Output:
+Output includes:
+- AM Server URL and API key
+- **Remote Control URL** — open this on your phone/tablet to use Claude Code
 
-```
-  ClaudeBox Activate
+### `cbx code [name]` (as claude user)
 
-  ✓ Start am-server
-  ✓ Start Cloudflare tunnel
-  ✓ Configure Chrome Lite MCP
-
-  AM Server
-    URL: https://abc.trycloudflare.com
-    Key: 005ca208ad3a411abb1b3ec04c0bc57f
-
-  Usage:
-    curl $URL/healthz
-    curl -H "X-API-Key: $KEY" $URL/api/messages
-    curl -H "X-API-Key: $KEY" $URL/api/stats
-
-  Chrome Lite MCP
-    Chrome Lite MCP configured in Claude Code
-    Claude can now read Gmail, Discord, Zalo, Messenger, Slack
-    via Chrome browser automation
-```
-
-### Check status
+Spawn additional Claude Code sessions on demand.
 
 ```bash
-ssh root@<host> "cbx status"
+ssh -t claude@<host> 'cbx code my-project'
+```
+
+Creates a new tmux session with remote-control enabled. Prints the Remote Control URL for mobile access.
+
+### `cbx status`
+
+Shows health of all services and active sessions.
+
+```bash
+ssh root@<host> 'cbx status'
 ```
 
 ```
@@ -161,63 +130,73 @@ ssh root@<host> "cbx status"
                      https://abc.trycloudflare.com
                      key: 005ca208...
   Chrome Lite MCP  ✓ configured
+
+  Sessions
+    ✓ claude-main: 1 windows (created ...)
+    ✓ claude-poller: 1 windows (created ...)
 ```
 
-## How Messages Work
+### `cbx help`
 
-Claude Code reads messages from your apps using Chrome Lite MCP — a browser automation MCP server that controls Chrome via extension + DevTools Protocol.
+Shows detailed help with all commands and workflow.
+
+## Message Polling (optional)
+
+If you want Claude to read your messages from Gmail, Discord, Zalo, Messenger, or Slack:
+
+1. After `cbx setup`, open the VNC URL and log into your apps in Chrome
+2. Run `cbx activate --poller`
+3. Claude can now read messages via Chrome Lite MCP and push them to am-server
 
 ```
-Claude Code  <-MCP->  Chrome Lite MCP  <-WebSocket->  Chrome Extension  <-Chrome API->  Gmail/Discord/Zalo/...
-                                                                                              |
-                                                                                              v
-                                                                                         am-server (SQLite)
-                                                                                              |
-                                                                                              v
-                                                                                    GET /api/messages (query anytime)
+Claude Code  <-MCP->  Chrome Lite MCP  <-WebSocket->  Chrome Extension  <->  Gmail/Discord/Zalo/...
+                                                                                    |
+                                                                                    v
+                                                                               am-server (SQLite)
+                                                                                    |
+                                                                                    v
+                                                                          GET /api/messages (query anytime)
 ```
 
-- **Read**: Claude navigates to each app, runs JS snippets to extract messages
-- **Store**: Structured messages are pushed to am-server for persistent storage
-- **Reply**: Claude can navigate back and send replies when you ask
-- **Query**: am-server is queryable anytime via REST API, even when Claude isn't running
-
-Supported apps: Gmail, Discord, Zalo, Messenger (non-E2EE), Slack
+This is entirely optional — if you just want a remote dev environment, `cbx setup` + `cbx activate` (without `--poller`) is all you need.
 
 ## Tools
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Claude Code CLI | latest | AI coding assistant |
-| Chrome Lite MCP | latest | Browser automation via MCP |
-| Chromium | 147+ | Desktop browser (VNC) |
-| Agent Browser | latest | Headless browser automation CLI |
-| Playwright | latest | E2E testing framework |
-| am-server | latest | Message aggregation + search |
-| Node.js | 22 | JavaScript runtime |
-| Python | 3.13 (via uv) | Python dev |
-| Rust + Cargo | 1.84 | Systems programming |
-| Go | 1.24 | Go tooling |
-| Docker | latest | Container management |
-| GitHub CLI | latest | Git operations |
-| Vercel CLI | latest | Frontend deployments |
-| Supabase CLI | latest | Backend/database |
-| Cloudflared | latest | Cloudflare tunneling |
+| Tool | Purpose |
+|------|---------|
+| Claude Code CLI | AI coding assistant |
+| Chrome Lite MCP | Browser automation via MCP |
+| Chromium | Desktop browser (VNC) |
+| Agent Browser | Headless browser automation CLI |
+| Playwright | E2E testing framework |
+| am-server | Message aggregation + search |
+| Node.js 22 | JavaScript runtime |
+| Python 3.13 (uv) | Python dev |
+| Rust + Cargo 1.84 | Systems programming |
+| Go 1.24 | Go tooling |
+| Docker | Container management |
+| GitHub CLI | Git operations |
+| Vercel CLI | Frontend deployments |
+| Supabase CLI | Backend/database |
+| Cloudflared | Cloudflare tunneling |
 
 ## Architecture
 
 ```
 You (phone/tablet/laptop)
   |
-  ├── Claude App (mobile) ──> Claude Code (remote, always on)
+  ├── Claude App (mobile) ──> Remote Control URL ──> Claude Code session
   └── SSH ──> ClaudeBox (cloud server)
-               ├── cbx CLI (setup, activate, status)
+               ├── cbx CLI (setup, activate, code, status)
                ├── claude user (autonomy mode)
                ├── /workspace (projects)
+               ├── tmux sessions
+               │    ├── claude-main (primary Claude Code session)
+               │    └── claude-poller (optional, message polling)
                ├── VNC desktop (Chrome + Fluxbox)
                │    ├── Chrome Lite MCP extension
                │    └── Cloudflare tunnel -> public URL
-               └── am-server (message store)
+               └── am-server (message store, optional)
                     └── Cloudflare tunnel -> public URL
 ```
 

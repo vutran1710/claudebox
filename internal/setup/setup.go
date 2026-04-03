@@ -196,9 +196,8 @@ func (m model) View() string {
 			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
 		}
 		b.WriteString("\n  Next steps:\n")
-		b.WriteString("    1. Open VNC URL in your browser\n")
-		b.WriteString("    2. Log into Gmail, Discord, Zalo in Chrome\n")
-		b.WriteString("    3. Run: cbx activate\n")
+		b.WriteString("    1. ssh -t claude@<host> 'cbx activate'\n")
+		b.WriteString("    2. (optional) Open VNC, log into apps for message polling\n")
 	}
 
 	if m.err != nil {

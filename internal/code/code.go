@@ -18,6 +18,7 @@ type model struct {
 	spinner spinner.Model
 	name    string
 	repo    string
+	project string
 	workDir string
 	rcURL   string
 	status  string
@@ -25,12 +26,13 @@ type model struct {
 	err     error
 }
 
-func Run(name string, repo string) error {
+func Run(name string, repo string, project string) error {
 	if name == "" {
 		if repo != "" {
-			// Use repo name as session name (e.g., "vutran1710/claudebox" -> "claudebox")
 			parts := strings.Split(repo, "/")
 			name = parts[len(parts)-1]
+		} else if project != "" {
+			name = project
 		} else {
 			name = fmt.Sprintf("claude-%d", time.Now().Unix())
 		}
@@ -39,6 +41,7 @@ func Run(name string, repo string) error {
 		spinner: ui.NewSpinner(),
 		name:    name,
 		repo:    repo,
+		project: project,
 	}
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
@@ -50,6 +53,9 @@ func Run(name string, repo string) error {
 func (m model) Init() tea.Cmd {
 	if m.repo != "" {
 		return tea.Batch(m.spinner.Tick, resolveRepo(m.repo))
+	}
+	if m.project != "" {
+		return tea.Batch(m.spinner.Tick, resolveProject(m.project))
 	}
 	return tea.Batch(m.spinner.Tick, startSession(m.name, ""))
 }
@@ -111,6 +117,19 @@ type repoResolvedMsg struct {
 	status string
 }
 type sessionReadyMsg struct{ rcURL string }
+
+func resolveProject(project string) tea.Cmd {
+	return func() tea.Msg {
+		workspace := "/workspace"
+		dir := filepath.Join(workspace, project)
+
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return repoResolvedMsg{dir: dir, status: fmt.Sprintf("Found project at %s", dir)}
+		}
+
+		return ui.ErrMsg{Err: fmt.Errorf("project not found: %s", dir)}
+	}
+}
 
 func resolveRepo(repo string) tea.Cmd {
 	return func() tea.Msg {

@@ -56,6 +56,10 @@ chmod 600 /home/claude/.ssh/authorized_keys 2>/dev/null || true`)
 		shell.RunShell(ctx, `cp /opt/chrome-lite-mcp/docs/skills.md /home/claude/.claude/chrome-lite-mcp-skills.md 2>/dev/null || true`)
 	}
 
+	// Copy CLAUDE.md and skills to workspace so Claude Code picks them up
+	shell.RunShell(ctx, `cp /opt/claudebox/CLAUDE.md /workspace/CLAUDE.md 2>/dev/null || true`)
+	shell.RunShell(ctx, `cp -r /opt/claudebox/skills /home/claude/.claude/skills 2>/dev/null || true`)
+
 	bashrc := `export PATH="/usr/local/share/devbox-tools/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 export HOME=/home/claude
 claude() {

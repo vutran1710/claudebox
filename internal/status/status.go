@@ -5,6 +5,7 @@ import (
 
 	"github.com/vutran1710/claudebox/internal/activate"
 	"github.com/vutran1710/claudebox/internal/auth"
+	"github.com/vutran1710/claudebox/internal/serve"
 	"github.com/vutran1710/claudebox/internal/session"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
@@ -64,6 +65,13 @@ func Run() {
 		fmt.Println(ui.StatusLine("Chrome Lite MCP", true, "configured"))
 	} else {
 		fmt.Println(ui.StatusLine("Chrome Lite MCP", false, "not configured"))
+	}
+
+	serveRunning := serve.IsRunning()
+	if serveRunning {
+		fmt.Println(ui.StatusLine("API Daemon", true, fmt.Sprintf("running (port %d)", serve.GetPort())))
+	} else {
+		fmt.Println(ui.StatusLine("API Daemon", false, "not running"))
 	}
 
 	fmt.Println()

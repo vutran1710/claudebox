@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +24,8 @@ const (
 	DefaultPort = 8091
 	PIDFile     = "/tmp/cbx-serve.pid"
 	APIKeyFile  = "/tmp/cbx-serve.key"
+	StateFile   = "/tmp/cbx-serve.state"
+	TunnelLog   = "/tmp/cbx-serve-tunnel.log"
 )
 
 type Server struct {
@@ -78,6 +82,13 @@ func (s *Server) Start() error {
 			os.Exit(1)
 		}
 	}()
+
+	// Start Cloudflare tunnel
+	tunnelURL := s.startTunnel()
+	if tunnelURL != "" {
+		s.logger.Info("tunnel ready", "url", tunnelURL)
+		saveState(tunnelURL)
+	}
 
 	<-ctx.Done()
 	s.logger.Info("shutting down")
@@ -209,6 +220,54 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func (s *Server) startTunnel() string {
+	logFile, err := os.OpenFile(TunnelLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		s.logger.Error("failed to create tunnel log", "err", err)
+		return ""
+	}
+
+	cmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", s.port))
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		s.logger.Error("failed to start tunnel", "err", err)
+		return ""
+	}
+
+	// Wait for tunnel URL
+	for i := 0; i < 30; i++ {
+		time.Sleep(2 * time.Second)
+		data, _ := os.ReadFile(TunnelLog)
+		for _, line := range strings.Split(string(data), "\n") {
+			if idx := strings.Index(line, "https://"); idx >= 0 {
+				url := line[idx:]
+				if strings.Contains(url, ".trycloudflare.com") {
+					if end := strings.IndexByte(url, ' '); end > 0 {
+						url = url[:end]
+					}
+					return strings.TrimSpace(url)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func saveState(tunnelURL string) {
+	os.WriteFile(StateFile, []byte(fmt.Sprintf("tunnel_url=%s\n", tunnelURL)), 0644)
+}
+
+func GetTunnelURL() string {
+	data, _ := os.ReadFile(StateFile)
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "tunnel_url=") {
+			return strings.TrimPrefix(line, "tunnel_url=")
+		}
+	}
+	return ""
 }
 
 func GetAPIKey() string {

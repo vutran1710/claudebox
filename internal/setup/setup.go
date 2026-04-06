@@ -27,6 +27,7 @@ const (
 	phaseAuthInput
 	phaseAuthSubmit
 	phaseVNC
+	phaseServe
 	phaseDone
 )
 
@@ -44,8 +45,9 @@ type model struct {
 	textInput  textinput.Model
 	oauthURL   string
 	authResult *auth.OAuthResult
-	vncInfo *vnc.VNCInfo
-	err     error
+	vncInfo  *vnc.VNCInfo
+	serveURL string
+	err      error
 }
 
 func Run() error {
@@ -150,6 +152,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.VNCReadyMsg:
 		m.vncInfo = &vnc.VNCInfo{TunnelURL: msg.URL, Password: msg.Password}
+		m.phase = phaseServe
+		return m, startServe()
+
+	case serveReadyMsg:
+		m.serveURL = msg.tunnelURL
 		m.phase = phaseDone
 		return m, tea.Quit
 
@@ -185,9 +192,14 @@ func (m model) View() string {
 	case phaseVNC:
 		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCheck.Render(), "Login successful"))
 		b.WriteString(fmt.Sprintf("  %s Starting VNC + Chrome...\n", ui.StyleSpin.Render(m.spinner.View())))
+	case phaseServe:
+		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s Starting API daemon...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseDone:
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s API daemon started\n\n", ui.StyleCheck.Render()))
 
 		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
 			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
@@ -202,7 +214,11 @@ func (m model) View() string {
 		b.WriteString("    cbx code -g owner/repo       Start session for a GitHub repo\n")
 		b.WriteString("    cbx code -p project          Start session for existing project\n")
 		b.WriteString("    cbx status                   Show server health\n\n")
-		b.WriteString("  API (http://localhost:8091):\n")
+		apiURL := "http://localhost:8091"
+		if m.serveURL != "" {
+			apiURL = m.serveURL
+		}
+		b.WriteString(fmt.Sprintf("  API (%s):\n", apiURL))
 		b.WriteString("    POST   /sessions             { name, github?, project? }\n")
 		b.WriteString("    GET    /sessions             List active sessions\n")
 		b.WriteString("    DELETE /sessions/{name}      Kill a session\n")
@@ -230,6 +246,7 @@ func (m model) View() string {
 
 type cloudInitDoneMsg struct{}
 type userCreatedMsg struct{}
+type serveReadyMsg struct{ tunnelURL string }
 func waitForCloudInit() tea.Cmd {
 	return func() tea.Msg {
 		shell.RunShellTimeout(5*time.Minute,
@@ -310,6 +327,25 @@ func startVNC() tea.Cmd {
 			return ui.ErrMsg{Err: err}
 		}
 		return ui.VNCReadyMsg{URL: info.TunnelURL, Password: info.Password}
+	}
+}
+
+func startServe() tea.Cmd {
+	return func() tea.Msg {
+		// Start cbx serve as a daemon via nohup
+		shell.RunShellTimeout(10*time.Second,
+			`nohup cbx serve > /tmp/cbx-serve.log 2>&1 &`)
+
+		// Wait for tunnel URL
+		for i := 0; i < 30; i++ {
+			time.Sleep(2 * time.Second)
+			url := serve.GetTunnelURL()
+			if url != "" {
+				return serveReadyMsg{tunnelURL: url}
+			}
+		}
+		// No tunnel but server may still be running
+		return serveReadyMsg{tunnelURL: ""}
 	}
 }
 

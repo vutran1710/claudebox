@@ -1,36 +1,30 @@
 # ClaudeBox TODO
 
-## Phase 2: cbx serve as control plane (feat/plugin-architecture branch)
+## Phase 2: Refactor & Control Plane (feat/plugin-architecture branch)
 
-### 1. Update cbx serve API
-- [ ] `name` field required in POST /sessions
+**Full plan:** [docs/refactor-plan.md](refactor-plan.md)
+
+### Refactor (Steps 1-6)
+- [ ] Step 1: Shell utilities (foundation)
+- [ ] Step 2: Extract `workspace/` — repo & project resolution
+- [ ] Step 3: Extract `session/` — clean Manager interface
+- [ ] Step 4: Extract `service/` — unified Service interface (VNC, am-server, tunnel)
+- [ ] Step 5: Clean `auth/` — OAuth + API keys only
+- [ ] Step 6: Create `provision/` — tools + user creation, testable
+
+### New Implementation (Steps 7-10)
+- [ ] Step 7: Rewrite `api/` — HTTP server with interfaces
+- [ ] Step 8: Rewrite `cli/` — TUI separated from logic
+- [ ] Step 9: Wire everything in `cmd/cbx/main.go`
+- [ ] Step 10: Integration & E2E tests
+
+### Feature Requirements
+- [ ] `name` required in POST /sessions
 - [ ] Response includes `dir` and `status` (cloned/found/created/running)
-- [ ] Handle `project` param: locate existing dir or create new one
-- [ ] Handle `github` param: clone if not found, report status
-
-### 2. Cloudflare tunnel for cbx serve
-- [ ] `cbx serve` starts Cloudflare tunnel alongside HTTP server
-- [ ] Tunnel URL stored in state file for retrieval
-- [ ] `cbx status` shows serve tunnel URL
-
-### 3. cbx setup — single command flow
-- [ ] Remove master session spawning from setup
-- [ ] Start cbx serve daemon at the end of setup
-- [ ] Start Cloudflare tunnel for serve daemon
-- [ ] Print VNC URL + password (for web app login)
-- [ ] Print instruction block with CLI + API + MCP info
-- [ ] User pastes instruction block into Claude app to get started
-
-### 4. Simplify commands
+- [ ] Cloudflare tunnel for cbx serve
+- [ ] Setup: one command, prints VNC URL + instruction block
+- [ ] No master session — sessions created on-demand
 - [ ] `cbx activate` removed or merged into setup
-- [ ] `cbx code` calls serve API internally (thin wrapper)
-- [ ] `cbx show api-key` shows serve API key
-
-### 5. CLAUDE.md update
-- [ ] Remove master session references
-- [ ] Document cbx serve API endpoints
-- [ ] Document Chrome Lite MCP plugin commands
-- [ ] Sessions are created on-demand, not pre-spawned
 
 ## Done
 

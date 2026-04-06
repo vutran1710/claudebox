@@ -12,6 +12,7 @@ import (
 	"github.com/vutran1710/claudebox/internal/auth"
 	"github.com/vutran1710/claudebox/internal/provision"
 	"github.com/vutran1710/claudebox/internal/serve"
+	"github.com/vutran1710/claudebox/internal/service"
 	"github.com/vutran1710/claudebox/internal/shell"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
@@ -27,6 +28,7 @@ const (
 	phaseAuthInput
 	phaseAuthSubmit
 	phaseVNC
+	phaseAMServer
 	phaseServe
 	phaseDone
 )
@@ -45,9 +47,10 @@ type model struct {
 	textInput  textinput.Model
 	oauthURL   string
 	authResult *auth.OAuthResult
-	vncInfo  *vnc.VNCInfo
-	serveURL string
-	err      error
+	vncInfo   *vnc.VNCInfo
+	amStatus  service.Status
+	serveURL  string
+	err       error
 }
 
 func Run() error {
@@ -152,6 +155,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.VNCReadyMsg:
 		m.vncInfo = &vnc.VNCInfo{TunnelURL: msg.URL, Password: msg.Password}
+		m.phase = phaseAMServer
+		return m, startAMServer()
+
+	case amServerReadyMsg:
+		m.amStatus = msg.status
 		m.phase = phaseServe
 		return m, startServe()
 
@@ -192,18 +200,30 @@ func (m model) View() string {
 	case phaseVNC:
 		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCheck.Render(), "Login successful"))
 		b.WriteString(fmt.Sprintf("  %s Starting VNC + Chrome...\n", ui.StyleSpin.Render(m.spinner.View())))
+	case phaseAMServer:
+		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s Starting am-server...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseServe:
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
 		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s am-server started\n", ui.StyleCheck.Render()))
 		b.WriteString(fmt.Sprintf("  %s Starting API daemon...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseDone:
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
 		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s am-server started\n", ui.StyleCheck.Render()))
 		b.WriteString(fmt.Sprintf("  %s API daemon started\n\n", ui.StyleCheck.Render()))
 
 		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
-			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
-			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
+			b.WriteString(fmt.Sprintf("  VNC:       %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
+			b.WriteString(fmt.Sprintf("  Password:  %s\n", m.vncInfo.Password))
+		}
+		if m.amStatus.TunnelURL != "" {
+			b.WriteString(fmt.Sprintf("  am-server: %s\n", ui.StyleValue.Render(m.amStatus.TunnelURL)))
+			if key, ok := m.amStatus.Extra["api_key"]; ok {
+				b.WriteString(fmt.Sprintf("  am-key:    %s\n", key))
+			}
 		}
 		b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
 		b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n")
@@ -246,6 +266,7 @@ func (m model) View() string {
 
 type cloudInitDoneMsg struct{}
 type userCreatedMsg struct{}
+type amServerReadyMsg struct{ status service.Status }
 type serveReadyMsg struct{ tunnelURL string }
 func waitForCloudInit() tea.Cmd {
 	return func() tea.Msg {
@@ -327,6 +348,16 @@ func startVNC() tea.Cmd {
 			return ui.ErrMsg{Err: err}
 		}
 		return ui.VNCReadyMsg{URL: info.TunnelURL, Password: info.Password}
+	}
+}
+
+func startAMServer() tea.Cmd {
+	return func() tea.Msg {
+		am := service.NewAMServer()
+		if err := am.Start(); err != nil {
+			return ui.ErrMsg{Err: fmt.Errorf("am-server: %w", err)}
+		}
+		return amServerReadyMsg{status: am.Status()}
 	}
 }
 

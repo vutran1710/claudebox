@@ -1,17 +1,36 @@
 # ClaudeBox TODO
 
-## In Progress (feat/plugin-architecture branch)
+## Phase 2: cbx serve as control plane (feat/plugin-architecture branch)
 
-### cbx serve improvements
-- [ ] `cbx setup` starts serve daemon + Cloudflare tunnel at the end
-- [ ] `cbx setup` prints API URL + key alongside VNC and Remote Control URLs
-- [ ] `cbx serve` gets its own Cloudflare tunnel for remote API access
-- [ ] Serve daemon auto-starts on boot (systemd service)
+### 1. Update cbx serve API
+- [ ] `name` field required in POST /sessions
+- [ ] Response includes `dir` and `status` (cloned/found/created/running)
+- [ ] Handle `project` param: locate existing dir or create new one
+- [ ] Handle `github` param: clone if not found, report status
 
-### Integration
-- [ ] `cbx activate` calls serve API instead of managing sessions directly
-- [ ] `cbx code` calls serve API instead of spawning tmux directly
-- [ ] Master Claude session uses serve API via CLAUDE.md instructions
+### 2. Cloudflare tunnel for cbx serve
+- [ ] `cbx serve` starts Cloudflare tunnel alongside HTTP server
+- [ ] Tunnel URL stored in state file for retrieval
+- [ ] `cbx status` shows serve tunnel URL
+
+### 3. cbx setup — single command flow
+- [ ] Remove master session spawning from setup
+- [ ] Start cbx serve daemon at the end of setup
+- [ ] Start Cloudflare tunnel for serve daemon
+- [ ] Print VNC URL + password (for web app login)
+- [ ] Print instruction block with CLI + API + MCP info
+- [ ] User pastes instruction block into Claude app to get started
+
+### 4. Simplify commands
+- [ ] `cbx activate` removed or merged into setup
+- [ ] `cbx code` calls serve API internally (thin wrapper)
+- [ ] `cbx show api-key` shows serve API key
+
+### 5. CLAUDE.md update
+- [ ] Remove master session references
+- [ ] Document cbx serve API endpoints
+- [ ] Document Chrome Lite MCP plugin commands
+- [ ] Sessions are created on-demand, not pre-spawned
 
 ## Done
 

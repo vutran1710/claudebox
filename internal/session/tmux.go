@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -12,7 +13,18 @@ import (
 const (
 	ClaudeBin = "/usr/local/share/devbox-tools/bin/claude"
 	WorkDir   = "/workspace"
+	ClaudeUser = "claude"
 )
+
+// runAs wraps a command with su if running as root.
+func runAs(cmd string) string {
+	if os.Getuid() == 0 {
+		// Escape single quotes in cmd
+		escaped := strings.ReplaceAll(cmd, "'", "'\\''")
+		return fmt.Sprintf(`su - %s -c '%s'`, ClaudeUser, escaped)
+	}
+	return cmd
+}
 
 // TmuxManager manages Claude Code sessions via tmux.
 type TmuxManager struct{}
@@ -31,12 +43,12 @@ func (m *TmuxManager) Create(name, workDir string) (*Session, error) {
 
 	// Kill existing session with this name
 	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`tmux kill-session -t %s 2>/dev/null || true`, name))
+		runAs(fmt.Sprintf(`tmux kill-session -t %s 2>/dev/null || true`, name)))
 
 	// Spawn claude in a new tmux session
 	_, err := shell.RunShellTimeout(10*time.Second,
-		fmt.Sprintf(`cd %s && tmux new-session -d -s %s '%s --dangerously-skip-permissions'`,
-			workDir, name, ClaudeBin))
+		runAs(fmt.Sprintf(`cd %s && tmux new-session -d -s %s '%s --dangerously-skip-permissions'`,
+			workDir, name, ClaudeBin)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start session: %w", err)
 	}
@@ -74,7 +86,7 @@ ready:
 }
 
 func (m *TmuxManager) List() ([]Session, error) {
-	res, _ := shell.RunShellTimeout(5*time.Second, `tmux ls 2>/dev/null`)
+	res, _ := shell.RunShellTimeout(5*time.Second, runAs(`tmux ls 2>/dev/null`))
 	output := strings.TrimSpace(res.Stdout)
 	if output == "" {
 		return nil, nil
@@ -100,26 +112,26 @@ func (m *TmuxManager) List() ([]Session, error) {
 
 func (m *TmuxManager) Kill(name string) error {
 	_, err := shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`tmux kill-session -t %s`, name))
+		runAs(fmt.Sprintf(`tmux kill-session -t %s`, name)))
 	return err
 }
 
 func (m *TmuxManager) IsRunning(name string) bool {
 	res, _ := shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`tmux has-session -t %s 2>/dev/null`, name))
+		runAs(fmt.Sprintf(`tmux has-session -t %s 2>/dev/null`, name)))
 	return res.ExitCode == 0
 }
 
 // --- internal helpers ---
 
-func sendKeys(session, keys string) {
+func sendKeys(sess, keys string) {
 	shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`tmux send-keys -t %s %s`, session, keys))
+		runAs(fmt.Sprintf(`tmux send-keys -t %s %s`, sess, keys)))
 }
 
-func capturPane(session string) string {
+func capturPane(sess string) string {
 	res, _ := shell.RunShellTimeout(5*time.Second,
-		fmt.Sprintf(`tmux capture-pane -t %s -p -S -50`, session))
+		runAs(fmt.Sprintf(`tmux capture-pane -t %s -p -S -50`, sess)))
 	return res.Stdout
 }
 

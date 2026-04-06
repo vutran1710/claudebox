@@ -1,9 +1,11 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -178,99 +180,152 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	var b strings.Builder
+	check := ui.StyleCheck.Render()
+	spin := ui.StyleSpin.Render(m.spinner.View())
 
 	b.WriteString(ui.StyleBold.Render("  ClaudeBox Setup") + "\n\n")
 
 	if m.phase == phaseCloudInit {
-		b.WriteString(fmt.Sprintf("  %s Waiting for cloud-init to finish...\n", ui.StyleSpin.Render(m.spinner.View())))
+		fmt.Fprintf(&b, "  %s Waiting for cloud-init to finish...\n", spin)
 		return b.String()
 	}
 
 	b.WriteString(ui.RenderStepList(m.tools, m.spinner))
 
+	// Progress steps
+	steps := []struct {
+		label    string
+		after    phase // show as done after this phase
+		spinning phase // show spinner during this phase
+	}{
+		{"Login successful", phaseVNC, phaseOAuth},
+		{"VNC + Chrome started", phaseAMServer, phaseVNC},
+		{"am-server started", phaseServe, phaseAMServer},
+		{"API daemon started", phaseDone, phaseServe},
+	}
+
 	switch m.phase {
 	case phaseUser:
-		b.WriteString(fmt.Sprintf("\n  %s Creating claude user...\n", ui.StyleSpin.Render(m.spinner.View())))
+		fmt.Fprintf(&b, "\n  %s Creating claude user...\n", spin)
 	case phaseOAuth:
-		b.WriteString(fmt.Sprintf("\n  %s Waiting for OAuth URL...\n", ui.StyleSpin.Render(m.spinner.View())))
+		fmt.Fprintf(&b, "\n  %s Waiting for OAuth URL...\n", spin)
 	case phaseAuthInput:
-		b.WriteString(fmt.Sprintf("\n  Auth code: %s\n", m.textInput.View()))
+		fmt.Fprintf(&b, "\n  Auth code: %s\n", m.textInput.View())
 	case phaseAuthSubmit:
-		b.WriteString(fmt.Sprintf("\n  %s Completing login...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseVNC:
-		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCheck.Render(), "Login successful"))
-		b.WriteString(fmt.Sprintf("  %s Starting VNC + Chrome...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseAMServer:
-		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Starting am-server...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseServe:
-		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s am-server started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Starting API daemon...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseDone:
-		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s am-server started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s API daemon started\n\n", ui.StyleCheck.Render()))
-
-		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
-			b.WriteString(fmt.Sprintf("  VNC:       %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
-			b.WriteString(fmt.Sprintf("  Password:  %s\n", m.vncInfo.Password))
-		}
-		if m.amStatus.TunnelURL != "" {
-			b.WriteString(fmt.Sprintf("  am-server: %s\n", ui.StyleValue.Render(m.amStatus.TunnelURL)))
-			if key, ok := m.amStatus.Extra["api_key"]; ok {
-				b.WriteString(fmt.Sprintf("  am-key:    %s\n", key))
+		fmt.Fprintf(&b, "\n  %s Completing login...\n", spin)
+	default:
+		b.WriteString("\n")
+		for _, s := range steps {
+			if m.phase >= s.after {
+				fmt.Fprintf(&b, "  %s %s\n", check, s.label)
+			} else if m.phase == s.spinning {
+				fmt.Fprintf(&b, "  %s %s...\n", spin, s.label)
+				break
 			}
 		}
-		b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
-		b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n")
-		b.WriteString("\n  Then create a Claude Project at claude.ai/projects\n")
-		b.WriteString("  and paste the instructions below:\n")
+	}
 
-		serveURL := m.serveURL
-		if serveURL == "" {
-			serveURL = "http://localhost:8091"
-		}
-		serveKey := serve.GetAPIKey()
-		amURL := m.amStatus.TunnelURL
-		if amURL == "" {
-			amURL = "http://localhost:8090"
-		}
-		amKey := ""
-		if key, ok := m.amStatus.Extra["api_key"]; ok {
-			amKey = key
-		}
-
-		b.WriteString("\n" + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
-		b.WriteString("You are connected to a ClaudeBox remote server.\n\n")
-		b.WriteString("To create a session for a GitHub repo:\n")
-		b.WriteString(fmt.Sprintf("curl -X POST %s/sessions \\\n", serveURL))
-		b.WriteString(fmt.Sprintf("  -H \"X-API-Key: %s\" \\\n", serveKey))
-		b.WriteString("  -H \"Content-Type: application/json\" \\\n")
-		b.WriteString("  -d '{\"name\": \"PROJECT\", \"github\": \"owner/repo\"}'\n\n")
-		b.WriteString("To create a session for an existing project:\n")
-		b.WriteString(fmt.Sprintf("curl -X POST %s/sessions \\\n", serveURL))
-		b.WriteString(fmt.Sprintf("  -H \"X-API-Key: %s\" \\\n", serveKey))
-		b.WriteString("  -H \"Content-Type: application/json\" \\\n")
-		b.WriteString("  -d '{\"name\": \"PROJECT\", \"project\": \"dir-name\"}'\n\n")
-		b.WriteString("To list sessions:\n")
-		b.WriteString(fmt.Sprintf("curl %s/sessions -H \"X-API-Key: %s\"\n\n", serveURL, serveKey))
-		b.WriteString("To kill a session:\n")
-		b.WriteString(fmt.Sprintf("curl -X DELETE %s/sessions/NAME -H \"X-API-Key: %s\"\n\n", serveURL, serveKey))
-		b.WriteString("To read messages from polling:\n")
-		b.WriteString(fmt.Sprintf("curl \"%s/api/messages?source=gmail\" -H \"X-API-Key: %s\"\n", amURL, amKey))
-		b.WriteString(fmt.Sprintf("curl \"%s/api/stats\" -H \"X-API-Key: %s\"\n", amURL, amKey))
-		b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+	if m.phase == phaseDone {
+		b.WriteString(renderDoneOutput(m))
 	}
 
 	if m.err != nil {
-		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCross.Render(), m.err.Error()))
+		fmt.Fprintf(&b, "\n  %s %s\n", ui.StyleCross.Render(), m.err.Error())
 	}
 
 	return b.String()
+}
+
+func renderDoneOutput(m model) string {
+	var b strings.Builder
+
+	vncURL, vncPass := "", ""
+	if m.vncInfo != nil {
+		vncURL = m.vncInfo.TunnelURL + "/vnc.html"
+		vncPass = m.vncInfo.Password
+	}
+	serveURL := m.serveURL
+	if serveURL == "" {
+		serveURL = "http://localhost:8091"
+	}
+	serveKey := serve.GetAPIKey()
+	amURL := m.amStatus.TunnelURL
+	if amURL == "" {
+		amURL = "http://localhost:8090"
+	}
+	amKey := ""
+	if key, ok := m.amStatus.Extra["api_key"]; ok {
+		amKey = key
+	}
+
+	data := map[string]string{
+		"VNCURL":   vncURL,
+		"VNCPass":  vncPass,
+		"AMURL":    amURL,
+		"AMKey":    amKey,
+		"ServeURL": serveURL,
+		"ServeKey": serveKey,
+	}
+
+	fmt.Fprintf(&b, "\n  VNC:       %s\n", ui.StyleValue.Render(vncURL))
+	fmt.Fprintf(&b, "  Password:  %s\n", vncPass)
+	if amURL != "" {
+		fmt.Fprintf(&b, "  am-server: %s\n", ui.StyleValue.Render(amURL))
+	}
+	if amKey != "" {
+		fmt.Fprintf(&b, "  am-key:    %s\n", amKey)
+	}
+
+	b.WriteString(`
+  To log into web apps, open VNC URL and sign in to
+  Gmail, Discord, Zalo, etc. in Chrome.
+
+  Then create a Claude Project at claude.ai/projects
+  and paste the instructions below:
+
+`)
+	b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+	b.WriteString(renderInstructions(data))
+	b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+
+	return b.String()
+}
+
+const instructionsTmpl = `You are connected to a ClaudeBox remote server.
+
+To create a session for a GitHub repo:
+curl -X POST {{.ServeURL}}/sessions \
+  -H "X-API-Key: {{.ServeKey}}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "PROJECT", "github": "owner/repo"}'
+
+To create a session for an existing project:
+curl -X POST {{.ServeURL}}/sessions \
+  -H "X-API-Key: {{.ServeKey}}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "PROJECT", "project": "dir-name"}'
+
+To list sessions:
+curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
+
+To kill a session:
+curl -X DELETE {{.ServeURL}}/sessions/NAME -H "X-API-Key: {{.ServeKey}}"
+
+To read messages from polling:
+curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
+curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"
+`
+
+func renderInstructions(data map[string]string) string {
+	tmpl, err := template.New("instructions").Parse(instructionsTmpl)
+	if err != nil {
+		return fmt.Sprintf("template error: %s", err)
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Sprintf("template error: %s", err)
+	}
+	return buf.String()
 }
 
 // Commands

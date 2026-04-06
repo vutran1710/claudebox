@@ -227,49 +227,43 @@ func (m model) View() string {
 		}
 		b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
 		b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n")
-		b.WriteString("\n  Then start a Claude Code session and send this:\n")
-		b.WriteString("\n  " + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
-		b.WriteString("  You are connected to a ClaudeBox server.\n\n")
-		b.WriteString("  CLI (via bash):\n")
-		b.WriteString("    cbx code -g owner/repo       Start session for a GitHub repo\n")
-		b.WriteString("    cbx code -p project          Start session for existing project\n")
-		b.WriteString("    cbx status                   Show server health\n\n")
-		apiURL := "http://localhost:8091"
-		if m.serveURL != "" {
-			apiURL = m.serveURL
+		b.WriteString("\n  Then create a Claude Project at claude.ai/projects\n")
+		b.WriteString("  and paste the instructions below:\n")
+
+		serveURL := m.serveURL
+		if serveURL == "" {
+			serveURL = "http://localhost:8091"
 		}
-		b.WriteString(fmt.Sprintf("  API (%s):\n", apiURL))
-		b.WriteString("    POST   /sessions             { name, github?, project? }\n")
-		b.WriteString("    GET    /sessions             List active sessions\n")
-		b.WriteString("    DELETE /sessions/{name}      Kill a session\n")
-		apiKey := serve.GetAPIKey()
-		if apiKey == "" {
-			apiKey = "(run 'cbx show api-key')"
+		serveKey := serve.GetAPIKey()
+		amURL := m.amStatus.TunnelURL
+		if amURL == "" {
+			amURL = "http://localhost:8090"
 		}
-		b.WriteString(fmt.Sprintf("    Header: X-API-Key: %s\n\n", apiKey))
-		amURL := "http://localhost:8090"
 		amKey := ""
-		if m.amStatus.TunnelURL != "" {
-			amURL = m.amStatus.TunnelURL
-		}
 		if key, ok := m.amStatus.Extra["api_key"]; ok {
 			amKey = key
 		}
-		b.WriteString(fmt.Sprintf("  am-server (%s):\n", amURL))
-		b.WriteString("    GET    /api/messages          List/search messages\n")
-		b.WriteString("    GET    /api/stats             Message counts by source\n")
-		b.WriteString("    POST   /webhook/chrome-lite-mcp  Webhook for background jobs\n")
-		if amKey != "" {
-			b.WriteString(fmt.Sprintf("    Header: X-API-Key: %s\n\n", amKey))
-		} else {
-			b.WriteString("\n")
-		}
-		b.WriteString("  Chrome Lite MCP plugins:\n")
-		b.WriteString("    init_plugin(name)            Initialize a plugin\n")
-		b.WriteString("    get(plugin, tool)            Read data\n")
-		b.WriteString("    post(plugin, tool)           Perform action\n")
-		b.WriteString("    create_job(...)              Schedule background polling\n")
-		b.WriteString("  " + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+
+		b.WriteString("\n" + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+		b.WriteString("You are connected to a ClaudeBox remote server.\n\n")
+		b.WriteString("To create a session for a GitHub repo:\n")
+		b.WriteString(fmt.Sprintf("curl -X POST %s/sessions \\\n", serveURL))
+		b.WriteString(fmt.Sprintf("  -H \"X-API-Key: %s\" \\\n", serveKey))
+		b.WriteString("  -H \"Content-Type: application/json\" \\\n")
+		b.WriteString("  -d '{\"name\": \"PROJECT\", \"github\": \"owner/repo\"}'\n\n")
+		b.WriteString("To create a session for an existing project:\n")
+		b.WriteString(fmt.Sprintf("curl -X POST %s/sessions \\\n", serveURL))
+		b.WriteString(fmt.Sprintf("  -H \"X-API-Key: %s\" \\\n", serveKey))
+		b.WriteString("  -H \"Content-Type: application/json\" \\\n")
+		b.WriteString("  -d '{\"name\": \"PROJECT\", \"project\": \"dir-name\"}'\n\n")
+		b.WriteString("To list sessions:\n")
+		b.WriteString(fmt.Sprintf("curl %s/sessions -H \"X-API-Key: %s\"\n\n", serveURL, serveKey))
+		b.WriteString("To kill a session:\n")
+		b.WriteString(fmt.Sprintf("curl -X DELETE %s/sessions/NAME -H \"X-API-Key: %s\"\n\n", serveURL, serveKey))
+		b.WriteString("To read messages from polling:\n")
+		b.WriteString(fmt.Sprintf("curl \"%s/api/messages?source=gmail\" -H \"X-API-Key: %s\"\n", amURL, amKey))
+		b.WriteString(fmt.Sprintf("curl \"%s/api/stats\" -H \"X-API-Key: %s\"\n", amURL, amKey))
+		b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
 	}
 
 	if m.err != nil {

@@ -6,9 +6,9 @@ import (
 	"github.com/vutran1710/claudebox/internal/activate"
 	"github.com/vutran1710/claudebox/internal/auth"
 	"github.com/vutran1710/claudebox/internal/serve"
+	"github.com/vutran1710/claudebox/internal/service"
 	"github.com/vutran1710/claudebox/internal/session"
 	"github.com/vutran1710/claudebox/internal/ui"
-	"github.com/vutran1710/claudebox/internal/vnc"
 )
 
 func Run() {
@@ -23,43 +23,44 @@ func Run() {
 		fmt.Println(ui.StatusLine("Claude Code", false, "not authenticated"))
 	}
 
-	vncRunning := vnc.IsRunning()
-	if vncRunning {
+	// VNC
+	vnc := service.NewVNC()
+	vncStatus := vnc.Status()
+	if vncStatus.Running {
 		fmt.Println(ui.StatusLine("VNC", true, "running"))
-		tunnelURL := vnc.GetTunnelURL()
-		if tunnelURL != "" {
-			fmt.Printf("                       %s\n", ui.StyleValue.Render(tunnelURL+"/vnc.html"))
+		if vncStatus.TunnelURL != "" {
+			fmt.Printf("                       %s\n", ui.StyleValue.Render(vncStatus.TunnelURL+"/vnc.html"))
 		}
-		password := vnc.GetPassword()
-		if password != "" {
-			fmt.Printf("                       %s\n", ui.StyleDim.Render("password: "+password))
+		if pw, ok := vncStatus.Extra["password"]; ok {
+			fmt.Printf("                       %s\n", ui.StyleDim.Render("password: "+pw))
 		}
 	} else {
 		fmt.Println(ui.StatusLine("VNC", false, "not running"))
 	}
 
-	chromeRunning := vnc.ChromeRunning()
-	if chromeRunning {
-		fmt.Println(ui.StatusLine("Chrome", true, fmt.Sprintf("running (PID %s)", vnc.ChromePID())))
+	// Chrome
+	if chrome, ok := vncStatus.Extra["chrome"]; ok && chrome == "running" {
+		fmt.Println(ui.StatusLine("Chrome", true, "running"))
 	} else {
 		fmt.Println(ui.StatusLine("Chrome", false, "not running"))
 	}
 
-	amRunning := activate.IsAMServerRunning()
-	if amRunning {
-		fmt.Println(ui.StatusLine("am-server", true, "running (port 8090)"))
-		tunnelURL := activate.GetAMTunnelURL()
-		if tunnelURL != "" {
-			fmt.Printf("                       %s\n", ui.StyleValue.Render(tunnelURL))
+	// am-server
+	am := service.NewAMServer()
+	amStatus := am.Status()
+	if amStatus.Running {
+		fmt.Println(ui.StatusLine("am-server", true, fmt.Sprintf("running (port %d)", amStatus.Port)))
+		if amStatus.TunnelURL != "" {
+			fmt.Printf("                       %s\n", ui.StyleValue.Render(amStatus.TunnelURL))
 		}
-		apiKey := activate.ReadAPIKey()
-		if apiKey != "" {
-			fmt.Printf("                       %s\n", ui.StyleDim.Render("key: "+apiKey))
+		if key, ok := amStatus.Extra["api_key"]; ok {
+			fmt.Printf("                       %s\n", ui.StyleDim.Render("key: "+key))
 		}
 	} else {
 		fmt.Println(ui.StatusLine("am-server", false, "not running"))
 	}
 
+	// Chrome Lite MCP
 	chromeMCP := activate.IsChromeMCPConfigured()
 	if chromeMCP {
 		fmt.Println(ui.StatusLine("Chrome Lite MCP", true, "configured"))
@@ -67,6 +68,7 @@ func Run() {
 		fmt.Println(ui.StatusLine("Chrome Lite MCP", false, "not configured"))
 	}
 
+	// API Daemon
 	serveRunning := serve.IsRunning()
 	if serveRunning {
 		fmt.Println(ui.StatusLine("API Daemon", true, fmt.Sprintf("running (port %d)", serve.GetPort())))
@@ -74,6 +76,7 @@ func Run() {
 		fmt.Println(ui.StatusLine("API Daemon", false, "not running"))
 	}
 
+	// Sessions
 	fmt.Println()
 	fmt.Println("  " + ui.StyleBold.Render("Sessions"))
 	mgr := session.NewTmuxManager()
@@ -87,4 +90,3 @@ func Run() {
 	}
 	fmt.Println()
 }
-

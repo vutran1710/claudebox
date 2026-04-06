@@ -2,8 +2,6 @@ package serve
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vutran1710/claudebox/internal/auth"
 	"github.com/vutran1710/claudebox/internal/session"
 	"github.com/vutran1710/claudebox/internal/workspace"
 )
@@ -38,7 +37,7 @@ func New(port int) *Server {
 	}
 	return &Server{
 		port:     port,
-		apiKey:   loadOrCreateKey(),
+		apiKey:   auth.LoadOrCreateKey(APIKeyFile),
 		sessions: session.NewTmuxManager(),
 		logger:   slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	}
@@ -212,21 +211,8 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func loadOrCreateKey() string {
-	data, err := os.ReadFile(APIKeyFile)
-	if err == nil && len(data) > 0 {
-		return string(data)
-	}
-	b := make([]byte, 32)
-	rand.Read(b)
-	key := hex.EncodeToString(b)
-	os.WriteFile(APIKeyFile, []byte(key), 0600)
-	return key
-}
-
 func GetAPIKey() string {
-	data, _ := os.ReadFile(APIKeyFile)
-	return string(data)
+	return auth.GetKey(APIKeyFile)
 }
 
 func GetPort() int {

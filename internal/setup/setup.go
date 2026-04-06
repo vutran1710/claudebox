@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/vutran1710/claudebox/internal/auth"
-	"github.com/vutran1710/claudebox/internal/session"
 	"github.com/vutran1710/claudebox/internal/shell"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
@@ -26,7 +25,6 @@ const (
 	phaseAuthInput
 	phaseAuthSubmit
 	phaseVNC
-	phaseMaster
 	phaseDone
 )
 
@@ -44,9 +42,8 @@ type model struct {
 	textInput  textinput.Model
 	oauthURL   string
 	authResult *auth.OAuthResult
-	vncInfo    *vnc.VNCInfo
-	masterURL  string
-	err        error
+	vncInfo *vnc.VNCInfo
+	err     error
 }
 
 func Run() error {
@@ -151,11 +148,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.VNCReadyMsg:
 		m.vncInfo = &vnc.VNCInfo{TunnelURL: msg.URL, Password: msg.Password}
-		m.phase = phaseMaster
-		return m, startMasterSession()
-
-	case masterSessionReadyMsg:
-		m.masterURL = msg.rcURL
 		m.phase = phaseDone
 		return m, tea.Quit
 
@@ -191,18 +183,10 @@ func (m model) View() string {
 	case phaseVNC:
 		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCheck.Render(), "Login successful"))
 		b.WriteString(fmt.Sprintf("  %s Starting VNC + Chrome...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseMaster:
-		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Starting master Claude session...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseDone:
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Master session started\n\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n\n", ui.StyleCheck.Render()))
 
-		if m.masterURL != "" {
-			b.WriteString(fmt.Sprintf("  Remote Control: %s\n\n", ui.StyleValue.Render(m.masterURL)))
-		}
 		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
 			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
 			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
@@ -222,8 +206,6 @@ func (m model) View() string {
 
 type cloudInitDoneMsg struct{}
 type userCreatedMsg struct{}
-type masterSessionReadyMsg struct{ rcURL string }
-
 func waitForCloudInit() tea.Cmd {
 	return func() tea.Msg {
 		shell.RunShellTimeout(5*time.Minute,
@@ -307,12 +289,3 @@ func startVNC() tea.Cmd {
 	}
 }
 
-func startMasterSession() tea.Cmd {
-	return func() tea.Msg {
-		rcURL, err := session.StartMasterSession()
-		if err != nil {
-			return ui.ErrMsg{Err: fmt.Errorf("failed to start master session: %w", err)}
-		}
-		return masterSessionReadyMsg{rcURL: rcURL}
-	}
-}

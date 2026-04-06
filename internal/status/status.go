@@ -76,39 +76,15 @@ func Run() {
 
 	fmt.Println()
 	fmt.Println("  " + ui.StyleBold.Render("Sessions"))
-	sessions := session.ListSessions()
-	if sessions == "" {
+	mgr := session.NewTmuxManager()
+	sessions, _ := mgr.List()
+	if len(sessions) == 0 {
 		fmt.Println("    " + ui.StyleDim.Render("no active sessions"))
 	} else {
-		for _, line := range splitLines(sessions) {
-			if line != "" {
-				fmt.Printf("    %s %s\n", ui.StyleCheck.Render(), line)
-			}
+		for _, s := range sessions {
+			fmt.Printf("    %s %s (%s)\n", ui.StyleCheck.Render(), s.Name, s.Status)
 		}
 	}
 	fmt.Println()
 }
 
-func splitLines(s string) []string {
-	var lines []string
-	for _, l := range []byte(s) {
-		if l == '\n' {
-			lines = append(lines, "")
-		}
-	}
-	// Simple split
-	result := make([]string, 0)
-	current := ""
-	for _, c := range s {
-		if c == '\n' {
-			result = append(result, current)
-			current = ""
-		} else {
-			current += string(c)
-		}
-	}
-	if current != "" {
-		result = append(result, current)
-	}
-	return result
-}

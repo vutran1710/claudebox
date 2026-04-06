@@ -155,18 +155,18 @@ func doConfigureChromeMCP() tea.Cmd {
 
 func doStartClaudeSession() tea.Cmd {
 	return func() tea.Msg {
-		rcURL, err := session.StartClaudeSession("claude-main", "")
+		sess, err := session.NewTmuxManager().Create("claude-main", "")
 		if err != nil {
 			return ui.ErrMsg{Err: err}
 		}
-		return claudeSessionReadyMsg{rcURL: rcURL}
+		return claudeSessionReadyMsg{rcURL: sess.RCURL}
 	}
 }
 
 func doStartPollerSession() tea.Cmd {
 	return func() tea.Msg {
 		// Start a second Claude session for message polling
-		_, err := session.StartClaudeSession("claude-poller", "")
+		_, err := session.NewTmuxManager().Create("claude-poller", "")
 		if err != nil {
 			return ui.ErrMsg{Err: err}
 		}

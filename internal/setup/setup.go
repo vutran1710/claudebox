@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/vutran1710/claudebox/internal/auth"
-	"github.com/vutran1710/claudebox/internal/session"
+	"github.com/vutran1710/claudebox/internal/provision"
 	"github.com/vutran1710/claudebox/internal/shell"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
@@ -26,7 +26,6 @@ const (
 	phaseAuthInput
 	phaseAuthSubmit
 	phaseVNC
-	phaseMaster
 	phaseDone
 )
 
@@ -44,13 +43,12 @@ type model struct {
 	textInput  textinput.Model
 	oauthURL   string
 	authResult *auth.OAuthResult
-	vncInfo    *vnc.VNCInfo
-	masterURL  string
-	err        error
+	vncInfo *vnc.VNCInfo
+	err     error
 }
 
 func Run() error {
-	tools := AllTools()
+	tools := provision.AllTools()
 	steps := make([]ui.Step, len(tools))
 	for i, t := range tools {
 		steps[i] = ui.Step{Name: t.Name, State: ui.StepPending}
@@ -116,7 +114,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ui.ToolErrorMsg:
 		m.tools[msg.Index].State = ui.StepError
 		m.tools[msg.Index].Error = msg.Err.Error()
-		toolName := ToolName(msg.Index)
+		toolName := provision.ToolName(msg.Index)
 		if criticalTools[toolName] {
 			m.err = fmt.Errorf("%s failed: %w", toolName, msg.Err)
 			return m, tea.Quit
@@ -151,11 +149,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.VNCReadyMsg:
 		m.vncInfo = &vnc.VNCInfo{TunnelURL: msg.URL, Password: msg.Password}
-		m.phase = phaseMaster
-		return m, startMasterSession()
-
-	case masterSessionReadyMsg:
-		m.masterURL = msg.rcURL
 		m.phase = phaseDone
 		return m, tea.Quit
 
@@ -191,18 +184,10 @@ func (m model) View() string {
 	case phaseVNC:
 		b.WriteString(fmt.Sprintf("\n  %s %s\n", ui.StyleCheck.Render(), "Login successful"))
 		b.WriteString(fmt.Sprintf("  %s Starting VNC + Chrome...\n", ui.StyleSpin.Render(m.spinner.View())))
-	case phaseMaster:
-		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Starting master Claude session...\n", ui.StyleSpin.Render(m.spinner.View())))
 	case phaseDone:
 		b.WriteString(fmt.Sprintf("\n  %s Login successful\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n", ui.StyleCheck.Render()))
-		b.WriteString(fmt.Sprintf("  %s Master session started\n\n", ui.StyleCheck.Render()))
+		b.WriteString(fmt.Sprintf("  %s VNC + Chrome started\n\n", ui.StyleCheck.Render()))
 
-		if m.masterURL != "" {
-			b.WriteString(fmt.Sprintf("  Remote Control: %s\n\n", ui.StyleValue.Render(m.masterURL)))
-		}
 		if m.vncInfo != nil && m.vncInfo.TunnelURL != "" {
 			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
 			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
@@ -222,8 +207,6 @@ func (m model) View() string {
 
 type cloudInitDoneMsg struct{}
 type userCreatedMsg struct{}
-type masterSessionReadyMsg struct{ rcURL string }
-
 func waitForCloudInit() tea.Cmd {
 	return func() tea.Msg {
 		shell.RunShellTimeout(5*time.Minute,
@@ -242,7 +225,7 @@ func waitForCloudInit() tea.Cmd {
 
 func installNextTool(index int) tea.Cmd {
 	return func() tea.Msg {
-		tools := AllTools()
+		tools := provision.AllTools()
 		if index >= len(tools) {
 			return nil
 		}
@@ -250,7 +233,7 @@ func installNextTool(index int) tea.Cmd {
 		if t.Check() {
 			return ui.ToolInstalledMsg{Index: index}
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout())
+		ctx, cancel := context.WithTimeout(context.Background(), provision.DefaultTimeout())
 		defer cancel()
 		if err := t.Install(ctx); err != nil {
 			if !t.Check() {
@@ -263,7 +246,7 @@ func installNextTool(index int) tea.Cmd {
 
 func createUser() tea.Cmd {
 	return func() tea.Msg {
-		if err := auth.EnsureClaudeUser(); err != nil {
+		if err := provision.EnsureClaudeUser(); err != nil {
 			return ui.ErrMsg{Err: fmt.Errorf("failed to create claude user: %w", err)}
 		}
 		return userCreatedMsg{}
@@ -307,12 +290,3 @@ func startVNC() tea.Cmd {
 	}
 }
 
-func startMasterSession() tea.Cmd {
-	return func() tea.Msg {
-		rcURL, err := session.StartMasterSession()
-		if err != nil {
-			return ui.ErrMsg{Err: fmt.Errorf("failed to start master session: %w", err)}
-		}
-		return masterSessionReadyMsg{rcURL: rcURL}
-	}
-}

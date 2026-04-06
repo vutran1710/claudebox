@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/vutran1710/claudebox/internal/activate"
 	"github.com/vutran1710/claudebox/internal/code"
+	"github.com/vutran1710/claudebox/internal/serve"
 	"github.com/vutran1710/claudebox/internal/setup"
 	"github.com/vutran1710/claudebox/internal/status"
 )
@@ -22,6 +24,8 @@ func main() {
 	root.AddCommand(setupCmd())
 	root.AddCommand(activateCmd())
 	root.AddCommand(codeCmd())
+	root.AddCommand(serveCmd())
+	root.AddCommand(showCmd())
 	root.AddCommand(statusCmd())
 
 	if err := root.Execute(); err != nil {
@@ -97,6 +101,90 @@ Examples:
 	return cmd
 }
 
+func serveCmd() *cobra.Command {
+	var port int
+	var stop bool
+	var daemon bool
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the session management API daemon",
+		Long: `Runs an HTTP API for managing Claude Code sessions.
+
+  cbx serve                  # start in foreground
+  cbx serve -d               # start as background daemon
+  cbx serve --stop           # stop the daemon
+
+API endpoints:
+  POST   /sessions           Create session { name, github, project }
+  GET    /sessions           List sessions
+  DELETE /sessions/{name}    Kill session
+  GET    /health             Health check`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if stop {
+				if err := serve.Stop(); err != nil {
+					return err
+				}
+				fmt.Println("cbx serve stopped")
+				return nil
+			}
+			if daemon {
+				return startDaemon(port)
+			}
+			return serve.New(port).Start()
+		},
+	}
+
+	cmd.Flags().IntVarP(&port, "port", "P", serve.DefaultPort, "Port to listen on")
+	cmd.Flags().BoolVar(&stop, "stop", false, "Stop the daemon")
+	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as background daemon")
+	return cmd
+}
+
+func startDaemon(port int) error {
+	// Re-exec ourselves in the background
+	exe, _ := os.Executable()
+	args := []string{exe, "serve", "--port", fmt.Sprintf("%d", port)}
+
+	attr := &os.ProcAttr{
+		Dir:   "/",
+		Env:   os.Environ(),
+		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+	}
+
+	proc, err := os.StartProcess(exe, args, attr)
+	if err != nil {
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+	proc.Release()
+	fmt.Printf("cbx serve started (port %d)\n", port)
+	return nil
+}
+
+func showCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [item]",
+		Short: "Show configuration values",
+		Long: `Show configuration values.
+
+  cbx show api-key           Show the API key for cbx serve`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "api-key":
+				key := serve.GetAPIKey()
+				if key == "" {
+					return fmt.Errorf("no API key found — run 'cbx serve' first")
+				}
+				fmt.Println(key)
+				return nil
+			default:
+				return fmt.Errorf("unknown item: %s (available: api-key)", args[0])
+			}
+		},
+	}
+}
+
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -106,4 +194,3 @@ func statusCmd() *cobra.Command {
 		},
 	}
 }
-

@@ -91,17 +91,17 @@ func RunHeadless(name, repo, project string) error {
 	}
 
 	fmt.Printf("Starting session '%s'...\n", name)
-	rcURL, err := session.StartClaudeSession(name, workDir)
+	sess, err := session.NewTmuxManager().Create(name, workDir)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("Session '%s' started\n", name)
-	if workDir != "" {
-		fmt.Printf("Working dir: %s\n", workDir)
+	if sess.Dir != "" {
+		fmt.Printf("Working dir: %s\n", sess.Dir)
 	}
-	if rcURL != "" {
-		fmt.Printf("Remote Control: %s\n", rcURL)
+	if sess.RCURL != "" {
+		fmt.Printf("Remote Control: %s\n", sess.RCURL)
 	}
 	fmt.Printf("Attach: tmux attach -t %s\n", name)
 	return nil
@@ -220,10 +220,10 @@ func resolveDir(repo, project string) tea.Cmd {
 
 func startSession(name, workDir string) tea.Cmd {
 	return func() tea.Msg {
-		rcURL, err := session.StartClaudeSession(name, workDir)
+		sess, err := session.NewTmuxManager().Create(name, workDir)
 		if err != nil {
 			return ui.ErrMsg{Err: err}
 		}
-		return sessionReadyMsg{rcURL: rcURL}
+		return sessionReadyMsg{rcURL: sess.RCURL}
 	}
 }

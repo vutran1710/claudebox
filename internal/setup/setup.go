@@ -247,6 +247,23 @@ func (m model) View() string {
 			apiKey = "(run 'cbx show api-key')"
 		}
 		b.WriteString(fmt.Sprintf("    Header: X-API-Key: %s\n\n", apiKey))
+		amURL := "http://localhost:8090"
+		amKey := ""
+		if m.amStatus.TunnelURL != "" {
+			amURL = m.amStatus.TunnelURL
+		}
+		if key, ok := m.amStatus.Extra["api_key"]; ok {
+			amKey = key
+		}
+		b.WriteString(fmt.Sprintf("  am-server (%s):\n", amURL))
+		b.WriteString("    GET    /api/messages          List/search messages\n")
+		b.WriteString("    GET    /api/stats             Message counts by source\n")
+		b.WriteString("    POST   /webhook/chrome-lite-mcp  Webhook for background jobs\n")
+		if amKey != "" {
+			b.WriteString(fmt.Sprintf("    Header: X-API-Key: %s\n\n", amKey))
+		} else {
+			b.WriteString("\n")
+		}
 		b.WriteString("  Chrome Lite MCP plugins:\n")
 		b.WriteString("    init_plugin(name)            Initialize a plugin\n")
 		b.WriteString("    get(plugin, tool)            Read data\n")

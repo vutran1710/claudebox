@@ -1,23 +1,42 @@
 You are connected to a ClaudeBox remote server.
+You can manage sessions and query messages via HTTP API.
 
-To create a session for a GitHub repo:
-curl -X POST {{.ServeURL}}/sessions \
-  -H "X-API-Key: {{.ServeKey}}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "PROJECT", "github": "owner/repo"}'
+## Session API ({{.ServeURL}})
+  POST   /sessions             Create session {name, github?, project?}
+  GET    /sessions             List active sessions
+  DELETE /sessions/{name}      Kill a session
+  GET    /health               Health check
+  Auth:  X-API-Key: {{.ServeKey}}
 
-To create a session for an existing project:
-curl -X POST {{.ServeURL}}/sessions \
-  -H "X-API-Key: {{.ServeKey}}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "PROJECT", "project": "dir-name"}'
+## Message API ({{.AMURL}})
+  GET    /api/messages          List messages (?source=gmail, ?q=search)
+  GET    /api/messages/{id}     Get single message
+  GET    /api/stats             Counts by source
+  POST   /webhook/chrome-lite-mcp  Webhook for background jobs
+  Auth:  X-API-Key: {{.AMKey}}
 
-To list sessions:
-curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
+## Examples
 
-To kill a session:
-curl -X DELETE {{.ServeURL}}/sessions/NAME -H "X-API-Key: {{.ServeKey}}"
+Create a session for a GitHub repo:
+  curl -X POST {{.ServeURL}}/sessions \
+    -H "X-API-Key: {{.ServeKey}}" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "my-app", "github": "owner/repo"}'
 
-To read messages from polling:
-curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
-curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"
+Create a session for an existing project:
+  curl -X POST {{.ServeURL}}/sessions \
+    -H "X-API-Key: {{.ServeKey}}" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "my-app", "project": "dir-name"}'
+
+List sessions:
+  curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
+
+Kill a session:
+  curl -X DELETE {{.ServeURL}}/sessions/my-app -H "X-API-Key: {{.ServeKey}}"
+
+Read Gmail messages:
+  curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
+
+Message stats:
+  curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"

@@ -5,18 +5,18 @@
 **Full plan:** [docs/refactor-plan.md](refactor-plan.md)
 
 ### Refactor (Steps 1-6)
-- [ ] Step 1: Shell utilities (foundation)
-- [ ] Step 2: Extract `workspace/` — repo & project resolution
-- [ ] Step 3: Extract `session/` — clean Manager interface
-- [ ] Step 4: Extract `service/` — unified Service interface (VNC, am-server, tunnel)
-- [ ] Step 5: Clean `auth/` — OAuth + API keys only
-- [ ] Step 6: Create `provision/` — tools + user creation, testable
+- [x] Step 1: Shell utilities (foundation) — 6 tests
+- [x] Step 2: Extract `workspace/` — repo & project resolution — 5 tests
+- [x] Step 3: Extract `session/` — clean Manager interface — 5 tests
+- [x] Step 4: Extract `service/` — unified Service interface — 5 tests
+- [x] Step 5: Clean `auth/` — OAuth + API keys only — 5 tests
+- [x] Step 6: Create `provision/` — tools + user creation
 
 ### New Implementation (Steps 7-10)
-- [ ] Step 7: Rewrite `api/` — HTTP server with interfaces
-- [ ] Step 8: Rewrite `cli/` — TUI separated from logic
-- [ ] Step 9: Wire everything in `cmd/cbx/main.go`
-- [ ] Step 10: Integration & E2E tests
+- [x] Step 7: Rewrite `api/` — HTTP server with interfaces — 11 tests
+- [x] Step 8: CLI uses new packages
+- [x] Step 9: Wire everything in `cmd/cbx/main.go`
+- [x] Step 10: Integration tests — 4 tests + E2E script
 
 ### Feature Requirements
 - [ ] `name` required in POST /sessions

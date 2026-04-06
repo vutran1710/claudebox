@@ -3,6 +3,7 @@ package setup
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"strings"
 	"text/template"
@@ -291,30 +292,8 @@ func renderDoneOutput(m model) string {
 	return b.String()
 }
 
-const instructionsTmpl = `You are connected to a ClaudeBox remote server.
-
-To create a session for a GitHub repo:
-curl -X POST {{.ServeURL}}/sessions \
-  -H "X-API-Key: {{.ServeKey}}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "PROJECT", "github": "owner/repo"}'
-
-To create a session for an existing project:
-curl -X POST {{.ServeURL}}/sessions \
-  -H "X-API-Key: {{.ServeKey}}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "PROJECT", "project": "dir-name"}'
-
-To list sessions:
-curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
-
-To kill a session:
-curl -X DELETE {{.ServeURL}}/sessions/NAME -H "X-API-Key: {{.ServeKey}}"
-
-To read messages from polling:
-curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
-curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"
-`
+//go:embed templates/instructions.txt
+var instructionsTmpl string
 
 func renderInstructions(data map[string]string) string {
 	tmpl, err := template.New("instructions").Parse(instructionsTmpl)

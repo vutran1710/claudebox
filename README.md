@@ -12,25 +12,58 @@ Deploy Claude Code to a cloud server and access it from your phone, tablet, or a
 
 - Work from anywhere — phone, iPad, coffee shop laptop
 - Claude Code runs 24/7 with full autonomy, pre-authenticated
-- Browser automation reads your Gmail, Discord, Zalo, Messenger via Chrome Lite MCP (optional)
+- Session management via HTTP API — create, list, kill sessions remotely
+- Browser automation for Gmail, Discord, Zalo, Messenger via Chrome Lite MCP (optional)
 - Messages aggregated to am-server, queryable anytime (optional)
-- VNC desktop for visual tasks, tunneled via Cloudflare
 
 ## Quick Start
 
 ```bash
 # 1. Deploy via GitHub Actions (DigitalOcean or Railway)
 
-# 2. Setup — install tools + authenticate (as root)
+# 2. Setup — install tools, authenticate, start services
 ssh -t root@<host> 'cbx setup'
 
-# 3. Activate — start Claude Code session (as claude user)
-ssh -t claude@<host> 'cbx activate'
-
-# 4. Access via Remote Control URL printed by activate
-#    or attach directly:
-ssh -t claude@<host> 'tmux attach -t claude-main'
+# 3. Open the Claude app — your session appears automatically
 ```
+
+## Commands
+
+```bash
+# Setup (as root, one-time)
+cbx setup                              # install tools, authenticate, start VNC
+
+# Sessions (as claude user)
+cbx code                               # new session in /workspace
+cbx code -g owner/repo                 # clone/find repo, start session
+cbx code -p my-project                 # open existing project
+cbx code --headless -g owner/repo      # non-interactive mode
+
+# API daemon
+cbx serve                              # start API server (foreground)
+cbx serve -d                           # start as daemon
+cbx serve --stop                       # stop daemon
+
+# Utilities
+cbx status                             # show all services + sessions
+cbx show api-key                       # show API key for cbx serve
+cbx help                               # full help
+```
+
+## Session Management API
+
+When `cbx serve` is running (port 8091):
+
+```
+POST   /sessions     Create session { name, github?, project? }
+GET    /sessions     List active sessions
+DELETE /sessions/:n  Kill session
+GET    /health       Health check
+```
+
+Auth: `X-API-Key` header or `?key=` query param.
+
+See [docs/cbx-serve-api.md](docs/cbx-serve-api.md) for full spec.
 
 ## Deploy
 
@@ -48,7 +81,6 @@ ssh -t claude@<host> 'tmux attach -t claude-main'
 
 3. Go to **Actions** > **Deploy to DigitalOcean** > **Run workflow**
 4. Choose region and size, click **Run** (defaults to Singapore)
-5. Commands with real IP appear in the workflow summary
 
 ### Docker (local)
 
@@ -59,161 +91,67 @@ docker run -d -p 2222:22 -p 6080:6080 \
   claudebox
 ```
 
-## Commands
-
-### `cbx setup` (as root, required)
-
-Installs all dev tools, authenticates Claude Code via OAuth, and starts VNC + Chrome.
-
-```bash
-ssh -t root@<host> 'cbx setup'
-```
-
-This runs a TUI that:
-- Waits for cloud-init to finish
-- Installs all tools (Cloudflare, Rust, Node, Go, Python, Docker, Claude CLI, Chrome Lite MCP, etc.)
-- Creates the `claude` user with autonomy mode
-- Authenticates Claude Code via OAuth (prints URL, you paste the code)
-- Starts VNC desktop + Chrome (with MCP extension) + Cloudflare tunnel
-
-After setup completes, you'll see the VNC URL and password.
-
-### `cbx activate` (as claude user)
-
-Starts services and spawns a Claude Code session.
-
-```bash
-# Basic — starts am-server + Claude Code session
-ssh -t claude@<host> 'cbx activate'
-
-# With message poller — also spawns a second session for polling
-ssh -t claude@<host> 'cbx activate --poller'
-```
-
-What it does:
-1. Starts am-server + Cloudflare tunnel
-2. Configures Chrome Lite MCP for Claude Code
-3. Spawns `claude-main` tmux session with remote-control + dangerously-skip-permissions
-4. (with `--poller`) Spawns `claude-poller` session for message polling
-
-Output includes:
-- AM Server URL and API key
-- **Remote Control URL** — open this on your phone/tablet to use Claude Code
-
-### `cbx code [name]` (as claude user)
-
-Spawn additional Claude Code sessions on demand.
-
-```bash
-ssh -t claude@<host> 'cbx code my-project'
-```
-
-Creates a new tmux session with remote-control enabled. Prints the Remote Control URL for mobile access.
-
-### `cbx status`
-
-Shows health of all services and active sessions.
-
-```bash
-ssh root@<host> 'cbx status'
-```
-
-```
-  ClaudeBox Status
-
-  Claude Code      ✓ authenticated
-  VNC              ✓ running
-                     https://xyz.trycloudflare.com/vnc.html
-                     password: tUDvpVIHtS5s
-  Chrome           ✓ running (PID 1234)
-  am-server        ✓ running (port 8090)
-                     https://abc.trycloudflare.com
-                     key: 005ca208...
-  Chrome Lite MCP  ✓ configured
-
-  Sessions
-    ✓ claude-main: 1 windows (created ...)
-    ✓ claude-poller: 1 windows (created ...)
-```
-
-### `cbx help`
-
-Shows detailed help with all commands and workflow.
-
-## Message Polling (optional)
-
-If you want Claude to read your messages from Gmail, Discord, Zalo, Messenger, or Slack:
-
-1. After `cbx setup`, open the VNC URL and log into your apps in Chrome
-2. Run `cbx activate --poller`
-3. Claude can now read messages via Chrome Lite MCP and push them to am-server
-
-```
-Claude Code  <-MCP->  Chrome Lite MCP  <-WebSocket->  Chrome Extension  <->  Gmail/Discord/Zalo/...
-                                                                                    |
-                                                                                    v
-                                                                               am-server (SQLite)
-                                                                                    |
-                                                                                    v
-                                                                          GET /api/messages (query anytime)
-```
-
-This is entirely optional — if you just want a remote dev environment, `cbx setup` + `cbx activate` (without `--poller`) is all you need.
-
-## Tools
-
-| Tool | Purpose |
-|------|---------|
-| Claude Code CLI | AI coding assistant |
-| Chrome Lite MCP | Browser automation via MCP |
-| Chromium | Desktop browser (VNC) |
-| Agent Browser | Headless browser automation CLI |
-| Playwright | E2E testing framework |
-| am-server | Message aggregation + search |
-| Node.js 22 | JavaScript runtime |
-| Python 3.13 (uv) | Python dev |
-| Rust + Cargo 1.84 | Systems programming |
-| Go 1.24 | Go tooling |
-| Docker | Container management |
-| GitHub CLI | Git operations |
-| Vercel CLI | Frontend deployments |
-| Supabase CLI | Backend/database |
-| Cloudflared | Cloudflare tunneling |
-
 ## Architecture
 
 ```
-You (phone/tablet/laptop)
+Phone/Tablet/Laptop
   |
-  ├── Claude App (mobile) ──> Remote Control URL ──> Claude Code session
-  └── SSH ──> ClaudeBox (cloud server)
-               ├── cbx CLI (setup, activate, code, status)
-               ├── claude user (autonomy mode)
-               ├── /workspace (projects)
-               ├── tmux sessions
-               │    ├── claude-main (primary Claude Code session)
-               │    └── claude-poller (optional, message polling)
-               ├── VNC desktop (Chrome + Fluxbox)
-               │    ├── Chrome Lite MCP extension
-               │    └── Cloudflare tunnel -> public URL
-               └── am-server (message store, optional)
-                    └── Cloudflare tunnel -> public URL
+  +-- Claude App --> Claude Code sessions (tmux)
+  +-- HTTP API  --> cbx serve (port 8091) --> session management
+  +-- SSH       --> direct access
+        |
+ClaudeBox (cloud server)
+  +-- cbx serve (API daemon)
+  +-- Chrome Lite MCP (browser automation + plugins)
+  +-- am-server (message store)
+  +-- VNC desktop (Chrome + Fluxbox)
 ```
 
-## Security
+See [docs/architecture.md](docs/architecture.md) for full diagram.
 
-- SSH: key-based auth only (passwords disabled)
-- VNC: password-protected, only accessible via Cloudflare tunnel
-- am-server: API key required, only accessible via Cloudflare tunnel
-- DigitalOcean firewall: only port 22 open
-- All other ports (5900, 6080, 7331, 8090) blocked from external access
+## Code Structure
+
+```
+cmd/cbx/          Cobra CLI
+internal/
+  auth/           OAuth + API key management
+  provision/      Tool installation + user creation
+  workspace/      GitHub repo + project resolution
+  session/        Manager interface + TmuxManager
+  service/        Service interface (VNC, AMServer)
+  serve/          HTTP API server
+  shell/          Shell execution utilities
+  setup/          TUI setup flow
+  code/           TUI session creation
+  status/         Status display
+  ui/             TUI components
+tests/            Integration tests + E2E script
+```
+
+49 tests across 10 packages. See [docs/cbx-structure.md](docs/cbx-structure.md).
+
+## Related Repos
+
+| Repo | Purpose |
+|------|---------|
+| [chrome-lite-mcp](https://github.com/vutran1710/chrome-lite-mcp) | Browser automation MCP with plugin system |
+| [am](https://github.com/vutran1710/am) | Message aggregation server |
 
 ## Ports
 
 | Port | Service | Access |
 |------|---------|--------|
-| 22 | SSH | Direct (key auth) |
+| 22   | SSH | Direct (key auth) |
 | 5900 | VNC | localhost only |
-| 6080 | noVNC | Via Cloudflare tunnel |
+| 6080 | noVNC | Cloudflare tunnel |
 | 7331 | Chrome Lite MCP | localhost only |
-| 8090 | am-server | Via Cloudflare tunnel |
+| 8090 | am-server | Cloudflare tunnel |
+| 8091 | cbx serve | Cloudflare tunnel |
+
+## Security
+
+- SSH: key-based auth only
+- VNC: password-protected, Cloudflare tunnel
+- am-server: API key, Cloudflare tunnel
+- cbx serve: API key, Cloudflare tunnel
+- DigitalOcean firewall: only port 22 open

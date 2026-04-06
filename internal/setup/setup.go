@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/vutran1710/claudebox/internal/auth"
 	"github.com/vutran1710/claudebox/internal/provision"
+	"github.com/vutran1710/claudebox/internal/serve"
 	"github.com/vutran1710/claudebox/internal/shell"
 	"github.com/vutran1710/claudebox/internal/ui"
 	"github.com/vutran1710/claudebox/internal/vnc"
@@ -192,8 +193,30 @@ func (m model) View() string {
 			b.WriteString(fmt.Sprintf("  VNC:      %s\n", ui.StyleValue.Render(m.vncInfo.TunnelURL+"/vnc.html")))
 			b.WriteString(fmt.Sprintf("  Password: %s\n", m.vncInfo.Password))
 		}
-		b.WriteString("\n  Open the Remote Control URL on your phone to start.\n")
-		b.WriteString("  Use 'cbx code' or 'cbx activate' from the master session.\n")
+		b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
+		b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n")
+		b.WriteString("\n  Then start a Claude Code session and send this:\n")
+		b.WriteString("\n  " + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+		b.WriteString("  You are connected to a ClaudeBox server.\n\n")
+		b.WriteString("  CLI (via bash):\n")
+		b.WriteString("    cbx code -g owner/repo       Start session for a GitHub repo\n")
+		b.WriteString("    cbx code -p project          Start session for existing project\n")
+		b.WriteString("    cbx status                   Show server health\n\n")
+		b.WriteString("  API (http://localhost:8091):\n")
+		b.WriteString("    POST   /sessions             { name, github?, project? }\n")
+		b.WriteString("    GET    /sessions             List active sessions\n")
+		b.WriteString("    DELETE /sessions/{name}      Kill a session\n")
+		apiKey := serve.GetAPIKey()
+		if apiKey == "" {
+			apiKey = "(run 'cbx show api-key')"
+		}
+		b.WriteString(fmt.Sprintf("    Header: X-API-Key: %s\n\n", apiKey))
+		b.WriteString("  Chrome Lite MCP plugins:\n")
+		b.WriteString("    init_plugin(name)            Initialize a plugin\n")
+		b.WriteString("    get(plugin, tool)            Read data\n")
+		b.WriteString("    post(plugin, tool)           Perform action\n")
+		b.WriteString("    create_job(...)              Schedule background polling\n")
+		b.WriteString("  " + ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
 	}
 
 	if m.err != nil {

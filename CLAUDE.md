@@ -195,3 +195,40 @@ When asked to reply to a message:
 - Use `agent-browser snapshot` to inspect page structure before interacting
 - Use `wormhole http <port> --headless` when running tunnels in background
 - Always close agent-browser sessions when done (`agent-browser close`)
+
+## Code Style (cbx Go codebase)
+
+### Structure
+- Each package has one job — don't mix concerns
+- Dependencies are interfaces, not concrete types
+- Business logic is separate from TUI/presentation
+
+### Functions
+- No wrapper functions that just call another function — inline instead
+- No multi-line `WriteString` chains — use `text/template` with embedded files
+- Use `fmt.Fprintf(&b, ...)` over `b.WriteString(fmt.Sprintf(...))`
+- Keep functions short — if it's doing two things, split it
+
+### Naming
+- Interfaces: `Manager`, `Service` — noun, describes what it manages
+- Implementations: `TmuxManager`, `VNC` — specific, describes how
+- Constructors: `NewTmuxManager()`, `NewVNC()`
+- No `Get` prefix for getters — just `APIKey()` not `GetAPIKey()`
+
+### Testing
+- Every package has tests
+- Use `t.TempDir()` for filesystem tests
+- Use `httptest.NewRecorder()` for HTTP tests
+- Mock interfaces, not concrete types
+- Constructor accepts dependencies: `NewWithManager(mgr, ...)` for testing
+
+### Templates
+- Long text output goes in `templates/*.txt` files
+- Loaded via `//go:embed templates/filename.txt`
+- Rendered with `text/template` and injected variables
+
+### CLI
+- Use cobra for commands and flags
+- Flags follow git conventions: `--repo`, `--headless`
+- Name is a positional arg, not a flag
+- `--headless` for non-interactive mode (called from other Claude sessions)

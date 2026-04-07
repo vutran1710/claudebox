@@ -1,0 +1,11 @@
+
+  To log into web apps, open VNC URL and sign in to
+  Gmail, Discord, Zalo, etc. in Chrome.
+
+  Save the block below as a skill file:
+    ~/.claude/skills/claudebox/SKILL.md
+
+  Or paste it into a Claude Project at claude.ai/projects
+
+─── SKILL START ────────────────────────
+{{.Skill}}─── SKILL END ──────────────────────────

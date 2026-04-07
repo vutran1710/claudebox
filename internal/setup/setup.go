@@ -71,8 +71,15 @@ func Run() error {
 	}
 
 	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		return err
+	}
+
+	// Print skill block after TUI exits (avoids viewport truncation)
+	final := finalModel.(model)
+	if final.phase == phaseDone {
+		fmt.Print(renderPostSetup(final))
 	}
 	return nil
 }
@@ -237,9 +244,7 @@ func (m model) View() string {
 	return b.String()
 }
 
-func renderDoneOutput(m model) string {
-	var b strings.Builder
-
+func getTemplateData(m model) map[string]string {
 	vncURL, vncPass := "", ""
 	if m.vncInfo != nil {
 		vncURL = m.vncInfo.TunnelURL + "/vnc.html"
@@ -249,7 +254,6 @@ func renderDoneOutput(m model) string {
 	if serveURL == "" {
 		serveURL = "http://localhost:8091"
 	}
-	serveKey := serve.GetAPIKey()
 	amURL := m.amStatus.TunnelURL
 	if amURL == "" {
 		amURL = "http://localhost:8090"
@@ -258,39 +262,42 @@ func renderDoneOutput(m model) string {
 	if key, ok := m.amStatus.Extra["api_key"]; ok {
 		amKey = key
 	}
-
-	data := map[string]string{
+	return map[string]string{
 		"VNCURL":   vncURL,
 		"VNCPass":  vncPass,
 		"AMURL":    amURL,
 		"AMKey":    amKey,
 		"ServeURL": serveURL,
-		"ServeKey": serveKey,
+		"ServeKey": serve.GetAPIKey(),
 	}
+}
 
-	fmt.Fprintf(&b, "\n  VNC:       %s\n", ui.StyleValue.Render(vncURL))
-	fmt.Fprintf(&b, "  Password:  %s\n", vncPass)
-	if amURL != "" {
-		fmt.Fprintf(&b, "  am-server: %s\n", ui.StyleValue.Render(amURL))
+// renderDoneOutput is shown in the TUI — keep it short
+func renderDoneOutput(m model) string {
+	var b strings.Builder
+	data := getTemplateData(m)
+	fmt.Fprintf(&b, "\n  VNC:       %s\n", ui.StyleValue.Render(data["VNCURL"]))
+	fmt.Fprintf(&b, "  Password:  %s\n", data["VNCPass"])
+	if data["AMURL"] != "" {
+		fmt.Fprintf(&b, "  am-server: %s\n", ui.StyleValue.Render(data["AMURL"]))
 	}
-	if amKey != "" {
-		fmt.Fprintf(&b, "  am-key:    %s\n", amKey)
-	}
+	b.WriteString("\n  Setup complete. Skill file printed below.\n")
+	return b.String()
+}
 
-	b.WriteString(`
-  To log into web apps, open VNC URL and sign in to
-  Gmail, Discord, Zalo, etc. in Chrome.
+// renderPostSetup is printed after the TUI exits — full skill block
+func renderPostSetup(m model) string {
+	var b strings.Builder
+	data := getTemplateData(m)
 
-  Save the block below as a skill file:
-    ~/.claude/skills/claudebox/SKILL.md
-
-  Or paste it into a Claude Project at claude.ai/projects
-
-`)
-	b.WriteString(ui.StyleDim.Render("─── SKILL START ────────────────────────") + "\n")
+	b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
+	b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n\n")
+	b.WriteString("  Save the block below as a skill file:\n")
+	b.WriteString("    ~/.claude/skills/claudebox/SKILL.md\n\n")
+	b.WriteString("  Or paste it into a Claude Project at claude.ai/projects\n\n")
+	b.WriteString("─── SKILL START ────────────────────────\n")
 	b.WriteString(renderInstructions(data))
-	b.WriteString(ui.StyleDim.Render("─── SKILL END ──────────────────────────") + "\n")
-
+	b.WriteString("─── SKILL END ──────────────────────────\n")
 	return b.String()
 }
 

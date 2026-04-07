@@ -287,25 +287,23 @@ func renderDoneOutput(m model) string {
 
 // renderPostSetup is printed after the TUI exits — full skill block
 func renderPostSetup(m model) string {
-	var b strings.Builder
 	data := getTemplateData(m)
-
-	b.WriteString("\n  To log into web apps, open VNC URL and sign in to\n")
-	b.WriteString("  Gmail, Discord, Zalo, etc. in Chrome.\n\n")
-	b.WriteString("  Save the block below as a skill file:\n")
-	b.WriteString("    ~/.claude/skills/claudebox/SKILL.md\n\n")
-	b.WriteString("  Or paste it into a Claude Project at claude.ai/projects\n\n")
-	b.WriteString("─── SKILL START ────────────────────────\n")
-	b.WriteString(renderInstructions(data))
-	b.WriteString("─── SKILL END ──────────────────────────\n")
-	return b.String()
+	data["Skill"] = renderInstructions(data)
+	return renderTemplate(postSetupTmpl, data)
 }
 
 //go:embed templates/instructions.txt
 var instructionsTmpl string
 
+//go:embed templates/post-setup.txt
+var postSetupTmpl string
+
 func renderInstructions(data map[string]string) string {
-	tmpl, err := template.New("instructions").Parse(instructionsTmpl)
+	return renderTemplate(instructionsTmpl, data)
+}
+
+func renderTemplate(tmplStr string, data map[string]string) string {
+	tmpl, err := template.New("t").Parse(tmplStr)
 	if err != nil {
 		return fmt.Sprintf("template error: %s", err)
 	}

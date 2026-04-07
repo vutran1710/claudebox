@@ -76,6 +76,12 @@ claude() {
 	shell.RunShell(ctx, "chown -R claude:claude /home/claude /workspace")
 	shell.RunShell(ctx, "claude config set --global autoUpdaterStatus disabled 2>/dev/null || true")
 
+	// Authenticate gh CLI if token file exists (saved by cloud-init)
+	if _, err := os.Stat("/root/.gh-token"); err == nil {
+		shell.RunShell(ctx, `cat /root/.gh-token | gh auth login --with-token 2>/dev/null || true`)
+		shell.RunShell(ctx, `su - claude -c "cat /root/.gh-token | gh auth login --with-token" 2>/dev/null || true`)
+	}
+
 	return nil
 }
 

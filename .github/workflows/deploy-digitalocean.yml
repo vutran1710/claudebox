@@ -111,7 +111,8 @@ jobs:
               git clone --branch __REF__ "https://github.com/__REPO__.git" /opt/claudebox
               GH_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
               if [ -n "$GH_TOKEN" ]; then
-                echo "$GH_TOKEN" | gh auth login --with-token 2>/dev/null || true
+                printf '%s' "$GH_TOKEN" > /root/.gh-token
+                chmod 600 /root/.gh-token
               fi
               touch /root/.cbx-ready
           CLOUD_INIT_EOF

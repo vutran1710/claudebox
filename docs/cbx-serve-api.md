@@ -22,19 +22,18 @@ Create a Claude Code session.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Session name (used as tmux session name) |
-| `github` | No | GitHub repo (owner/repo) — clones if not found in /workspace |
-| `project` | No | Existing directory name in /workspace |
+| `name` | Yes | Session name — maps to `/workspace/{name}` |
+| `repo` | No | Git repo to clone (owner/repo shorthand or full URL) |
 
 ```json
-// Clone a GitHub repo and start session
-{ "name": "my-app", "github": "owner/repo" }
+// Find or create /workspace/my-app
+{ "name": "my-app" }
 
-// Open existing project
-{ "name": "my-app", "project": "existing-dir" }
+// Clone GitHub repo to /workspace/my-app
+{ "name": "my-app", "repo": "owner/repo" }
 
-// Blank session in /workspace
-{ "name": "scratch" }
+// Clone any git URL
+{ "name": "my-app", "repo": "https://github.com/owner/repo.git" }
 ```
 
 **Response:**
@@ -42,17 +41,25 @@ Create a Claude Code session.
 ```json
 {
   "name": "my-app",
-  "dir": "/workspace/repo",
+  "dir": "/workspace/my-app",
   "status": "cloned",
   "remote_control": "https://claude.ai/code/session_..."
 }
 ```
 
+If session already exists:
+```json
+{
+  "name": "my-app",
+  "status": "already running"
+}
+```
+
 Status values:
-- `cloned` — GitHub repo was cloned
-- `found` — existing project directory was found
-- `created` — new directory was created
-- `running` — session started in /workspace (no project)
+- `cloned` — repo was cloned
+- `found` — existing directory found
+- `created` — new directory created with git init
+- `already running` — session with this name exists
 
 **Errors:**
 

@@ -19,12 +19,16 @@
 - [x] Step 10: Integration tests — 4 tests + E2E script
 
 ### Feature Requirements
-- [ ] `name` required in POST /sessions
-- [ ] Response includes `dir` and `status` (cloned/found/created/running)
-- [ ] Cloudflare tunnel for cbx serve
-- [ ] Setup: one command, prints VNC URL + instruction block
-- [ ] No master session — sessions created on-demand
-- [ ] `cbx activate` removed or merged into setup
+- [x] `name` required in POST /sessions
+- [x] Response includes `dir` and `status` (cloned/found/created/already running)
+- [x] Cloudflare tunnel for cbx serve
+- [x] Setup: one command, prints VNC URL + skill file
+- [x] No master session — sessions created on-demand
+- [x] Unified `cbx code <name> [--repo]` — smart resolution
+- [x] Duplicate session check
+- [x] gh auth via token file (cloud-init → setup)
+- [x] am-server started with tunnel during setup
+- [x] Skill-formatted output ready to save as SKILL.md
 
 ## Done
 

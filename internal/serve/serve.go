@@ -29,10 +29,11 @@ const (
 )
 
 type Server struct {
-	port     int
-	apiKey   string
-	sessions session.Manager
-	logger   *slog.Logger
+	port      int
+	apiKey    string
+	sessions  session.Manager
+	workspace string // root dir for projects
+	logger    *slog.Logger
 }
 
 func New(port int) *Server {
@@ -40,20 +41,25 @@ func New(port int) *Server {
 		port = DefaultPort
 	}
 	return &Server{
-		port:     port,
-		apiKey:   auth.LoadOrCreateKey(APIKeyFile),
-		sessions: session.NewTmuxManager(),
-		logger:   slog.New(slog.NewJSONHandler(os.Stderr, nil)),
+		port:      port,
+		apiKey:    auth.LoadOrCreateKey(APIKeyFile),
+		sessions:  session.NewTmuxManager(),
+		workspace: workspace.DefaultRoot,
+		logger:    slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	}
 }
 
-// NewWithManager creates a server with a custom session manager (for testing).
-func NewWithManager(port int, apiKey string, mgr session.Manager) *Server {
+// NewWithManager creates a server with custom dependencies (for testing).
+func NewWithManager(port int, apiKey string, mgr session.Manager, wsRoot string) *Server {
+	if wsRoot == "" {
+		wsRoot = workspace.DefaultRoot
+	}
 	return &Server{
-		port:     port,
-		apiKey:   apiKey,
-		sessions: mgr,
-		logger:   slog.New(slog.NewJSONHandler(os.Stderr, nil)),
+		port:      port,
+		apiKey:    apiKey,
+		sessions:  mgr,
+		workspace: wsRoot,
+		logger:    slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	}
 }
 
@@ -125,9 +131,8 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 // --- Handlers ---
 
 type createRequest struct {
-	Name    string `json:"name"`
-	GitHub  string `json:"github"`
-	Project string `json:"project"`
+	Name string `json:"name"`
+	Repo string `json:"repo"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -146,25 +151,24 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve working directory
-	var workDir, dirStatus string
-	if req.GitHub != "" {
-		result, err := workspace.ResolveGitHub(req.GitHub)
-		if err != nil {
-			jsonError(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		workDir = result.Dir
-		dirStatus = result.Status
-	} else if req.Project != "" {
-		result, err := workspace.ResolveProject(req.Project)
-		if err != nil {
-			jsonError(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		workDir = result.Dir
-		dirStatus = result.Status
+	// Check if session already exists
+	if s.sessions.IsRunning(req.Name) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(session.Session{
+			Name:   req.Name,
+			Status: "already running",
+		})
+		return
 	}
+
+	// Resolve working directory
+	result, err := workspace.ResolveIn(s.workspace, req.Name, req.Repo)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	workDir := result.Dir
+	dirStatus := result.Status
 
 	s.logger.Info("creating session", "name", req.Name, "dir", workDir)
 	sess, err := s.sessions.Create(req.Name, workDir)

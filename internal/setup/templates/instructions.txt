@@ -2,7 +2,7 @@ You are connected to a ClaudeBox remote server.
 You can manage sessions and query messages via HTTP API.
 
 ## Session API ({{.ServeURL}})
-  POST   /sessions             Create session {name, github?, project?}
+  POST   /sessions             Create session {name, repo?}
   GET    /sessions             List active sessions
   DELETE /sessions/{name}      Kill a session
   GET    /health               Health check
@@ -17,17 +17,17 @@ You can manage sessions and query messages via HTTP API.
 
 ## Examples
 
-Create a session for a GitHub repo:
+Create a session (finds or creates /workspace/my-app):
   curl -X POST {{.ServeURL}}/sessions \
     -H "X-API-Key: {{.ServeKey}}" \
     -H "Content-Type: application/json" \
-    -d '{"name": "my-app", "github": "owner/repo"}'
+    -d '{"name": "my-app"}'
 
-Create a session for an existing project:
+Create a session with a git repo:
   curl -X POST {{.ServeURL}}/sessions \
     -H "X-API-Key: {{.ServeKey}}" \
     -H "Content-Type: application/json" \
-    -d '{"name": "my-app", "project": "dir-name"}'
+    -d '{"name": "my-app", "repo": "owner/repo"}'
 
 List sessions:
   curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"

@@ -70,33 +70,31 @@ Run as claude user.
 
 func codeCmd() *cobra.Command {
 	var repo string
-	var project string
 	var headless bool
 
 	cmd := &cobra.Command{
-		Use:   "code [name]",
+		Use:   "code <name>",
 		Short: "Spawn a new Claude Code session",
 		Long: `Spawn a new Claude Code tmux session with remote-control and
-dangerously-skip-permissions enabled. Prints the remote control URL.
+dangerously-skip-permissions enabled.
+
+The name maps to a directory in /workspace:
+  - If the directory exists, opens it
+  - If --repo is set, clones the repo there
+  - Otherwise, creates a new directory with git init
 
 Examples:
-  cbx code                              # session in /workspace
-  cbx code my-project                   # named session in /workspace
-  cbx code -g vutran1710/claudebox      # clone/find repo, session named "claudebox"
-  cbx code -p my-app                    # open existing project in /workspace/my-app
-  cbx code --headless -g owner/repo     # non-interactive (for use from another Claude session)`,
-		Args: cobra.MaximumNArgs(1),
+  cbx code hello-world                     # find or create /workspace/hello-world
+  cbx code my-app --repo owner/repo        # clone GitHub repo
+  cbx code my-app --repo https://...       # clone any git URL
+  cbx code my-app --headless               # non-interactive mode`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := ""
-			if len(args) > 0 {
-				name = args[0]
-			}
-			return code.Run(name, repo, project, headless)
+			return code.Run(args[0], repo, headless)
 		},
 	}
 
-	cmd.Flags().StringVarP(&repo, "github", "g", "", "GitHub repo (owner/repo) to clone or find")
-	cmd.Flags().StringVarP(&project, "project", "p", "", "Existing project directory in /workspace")
+	cmd.Flags().StringVarP(&repo, "repo", "r", "", "Git repo to clone (owner/repo or full URL)")
 	cmd.Flags().BoolVar(&headless, "headless", false, "Non-interactive mode (no TUI)")
 	return cmd
 }

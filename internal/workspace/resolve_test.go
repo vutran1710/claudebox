@@ -6,69 +6,69 @@ import (
 	"testing"
 )
 
-func TestResolveProjectIn_Found(t *testing.T) {
+func TestResolveIn_FindExisting(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "my-app"), 0755)
 
-	result, err := ResolveProjectIn(root, "my-app")
+	result, err := ResolveIn(root, "my-app", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Status != "found" {
 		t.Errorf("expected 'found', got %q", result.Status)
 	}
-	if result.Dir != filepath.Join(root, "my-app") {
-		t.Errorf("unexpected dir: %s", result.Dir)
+}
+
+func TestResolveIn_CreateNew(t *testing.T) {
+	root := t.TempDir()
+
+	result, err := ResolveIn(root, "new-project", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != "created" {
+		t.Errorf("expected 'created', got %q", result.Status)
+	}
+	if _, err := os.Stat(result.Dir); err != nil {
+		t.Error("directory should exist")
 	}
 }
 
-func TestResolveProjectIn_NotFound(t *testing.T) {
+func TestResolveIn_FindClonedRepo(t *testing.T) {
 	root := t.TempDir()
-	_, err := ResolveProjectIn(root, "nonexistent")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-func TestResolveGitHubIn_AlreadyCloned(t *testing.T) {
-	root := t.TempDir()
-	// Create a fake git repo
 	os.MkdirAll(filepath.Join(root, "my-repo", ".git"), 0755)
 
-	result, err := ResolveGitHubIn(root, "owner/my-repo")
+	result, err := ResolveIn(root, "my-repo", "owner/my-repo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Status != "found" {
 		t.Errorf("expected 'found', got %q", result.Status)
 	}
-	if result.Dir != filepath.Join(root, "my-repo") {
-		t.Errorf("unexpected dir: %s", result.Dir)
-	}
 }
 
-func TestResolveGitHubIn_ExtractsRepoName(t *testing.T) {
-	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "claudebox", ".git"), 0755)
-
-	result, err := ResolveGitHubIn(root, "vutran1710/claudebox")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestNormalizeRepoURL(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"owner/repo", "https://github.com/owner/repo.git"},
+		{"https://github.com/a/b.git", "https://github.com/a/b.git"},
+		{"git@github.com:a/b.git", "git@github.com:a/b.git"},
 	}
-	if filepath.Base(result.Dir) != "claudebox" {
-		t.Errorf("expected dir name 'claudebox', got %q", filepath.Base(result.Dir))
+	for _, tt := range tests {
+		got := normalizeRepoURL(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizeRepoURL(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }
 
 func TestIsGitRepo(t *testing.T) {
 	root := t.TempDir()
-
-	// Not a git repo
 	if isGitRepo(root) {
 		t.Error("empty dir should not be a git repo")
 	}
-
-	// Make it a git repo
 	os.MkdirAll(filepath.Join(root, ".git"), 0755)
 	if !isGitRepo(root) {
 		t.Error("dir with .git should be a git repo")

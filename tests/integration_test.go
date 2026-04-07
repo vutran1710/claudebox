@@ -53,7 +53,7 @@ func (m *mockManager) IsRunning(name string) bool {
 
 func TestAPI_FullLifecycle(t *testing.T) {
 	mgr := newMockManager()
-	srv := serve.NewWithManager(0, "test-key", mgr)
+	srv := serve.NewWithManager(0, "test-key", mgr, t.TempDir())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -112,7 +112,7 @@ func TestAPI_FullLifecycle(t *testing.T) {
 
 func TestAPI_QueryParamAuth(t *testing.T) {
 	mgr := newMockManager()
-	srv := serve.NewWithManager(0, "secret", mgr)
+	srv := serve.NewWithManager(0, "secret", mgr, t.TempDir())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -125,15 +125,18 @@ func TestAPI_QueryParamAuth(t *testing.T) {
 func TestWorkspace_FullResolution(t *testing.T) {
 	root := t.TempDir()
 
-	// Project not found
-	_, err := workspace.ResolveProjectIn(root, "nope")
-	if err == nil {
-		t.Fatal("expected error for missing project")
+	// New project — creates dir
+	result, err := workspace.ResolveIn(root, "new-app", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "created" {
+		t.Errorf("expected 'created', got %q", result.Status)
 	}
 
-	// Create project
+	// Existing project — finds it
 	os.MkdirAll(filepath.Join(root, "my-app"), 0755)
-	result, err := workspace.ResolveProjectIn(root, "my-app")
+	result, err = workspace.ResolveIn(root, "my-app", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,9 +144,9 @@ func TestWorkspace_FullResolution(t *testing.T) {
 		t.Errorf("expected 'found', got %q", result.Status)
 	}
 
-	// GitHub already cloned
+	// Repo already cloned — finds it
 	os.MkdirAll(filepath.Join(root, "repo", ".git"), 0755)
-	result, err = workspace.ResolveGitHubIn(root, "owner/repo")
+	result, err = workspace.ResolveIn(root, "repo", "owner/repo")
 	if err != nil {
 		t.Fatal(err)
 	}

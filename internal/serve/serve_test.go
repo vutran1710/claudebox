@@ -43,12 +43,12 @@ func (m *mockManager) IsRunning(name string) bool {
 	return ok
 }
 
-func newTestServer() *Server {
-	return NewWithManager(0, "test-key", &mockManager{sessions: map[string]*session.Session{}})
+func newTestServer(t *testing.T) *Server {
+	return NewWithManager(0, "test-key", &mockManager{sessions: map[string]*session.Session{}}, t.TempDir())
 }
 
 func TestHealth(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
@@ -59,7 +59,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestCreateSession_Valid(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	body := `{"name":"test-session"}`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
 	req.Header.Set("X-API-Key", "test-key")
@@ -77,7 +77,7 @@ func TestCreateSession_Valid(t *testing.T) {
 }
 
 func TestCreateSession_MissingName(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	body := `{"github":"owner/repo"}`
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(body))
 	req.Header.Set("X-API-Key", "test-key")
@@ -90,7 +90,7 @@ func TestCreateSession_MissingName(t *testing.T) {
 }
 
 func TestCreateSession_BadJSON(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("POST", "/sessions", strings.NewReader("not json"))
 	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
@@ -102,7 +102,7 @@ func TestCreateSession_BadJSON(t *testing.T) {
 }
 
 func TestListSessions(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 
 	// Create a session first
 	s.sessions.Create("test", "")
@@ -123,7 +123,7 @@ func TestListSessions(t *testing.T) {
 }
 
 func TestDeleteSession(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	s.sessions.Create("to-delete", "")
 
 	req := httptest.NewRequest("DELETE", "/sessions/to-delete", nil)
@@ -140,7 +140,7 @@ func TestDeleteSession(t *testing.T) {
 }
 
 func TestDeleteSession_NotFound(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("DELETE", "/sessions/nonexistent", nil)
 	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
@@ -152,7 +152,7 @@ func TestDeleteSession_NotFound(t *testing.T) {
 }
 
 func TestAuth_MissingKey(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("GET", "/sessions", nil)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
@@ -163,7 +163,7 @@ func TestAuth_MissingKey(t *testing.T) {
 }
 
 func TestAuth_WrongKey(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("GET", "/sessions", nil)
 	req.Header.Set("X-API-Key", "wrong-key")
 	w := httptest.NewRecorder()
@@ -175,7 +175,7 @@ func TestAuth_WrongKey(t *testing.T) {
 }
 
 func TestAuth_QueryParam(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	req := httptest.NewRequest("GET", "/sessions?key=test-key", nil)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)

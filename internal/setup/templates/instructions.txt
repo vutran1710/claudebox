@@ -1,42 +1,70 @@
+---
+name: claudebox
+description: Manage ClaudeBox remote server — create sessions, query messages, and interact with the server API.
+---
+
+# ClaudeBox Remote Server
+
 You are connected to a ClaudeBox remote server.
-You can manage sessions and query messages via HTTP API.
 
-## Session API ({{.ServeURL}})
-  POST   /sessions             Create session {name, repo?}
-  GET    /sessions             List active sessions
-  DELETE /sessions/{name}      Kill a session
-  GET    /health               Health check
-  Auth:  X-API-Key: {{.ServeKey}}
+## Session API
 
-## Message API ({{.AMURL}})
-  GET    /api/messages          List messages (?source=gmail, ?q=search)
-  GET    /api/messages/{id}     Get single message
-  GET    /api/stats             Counts by source
-  POST   /webhook/chrome-lite-mcp  Webhook for background jobs
-  Auth:  X-API-Key: {{.AMKey}}
+Base URL: {{.ServeURL}}
+Auth: `X-API-Key: {{.ServeKey}}`
+
+| Method | Endpoint | Body | Description |
+|--------|----------|------|-------------|
+| POST | /sessions | `{name, repo?}` | Create session (finds/clones/creates workspace) |
+| GET | /sessions | — | List active sessions |
+| DELETE | /sessions/{name} | — | Kill a session |
+| GET | /health | — | Health check |
+
+## Message API
+
+Base URL: {{.AMURL}}
+Auth: `X-API-Key: {{.AMKey}}`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/messages | List messages (`?source=gmail`, `?q=search`) |
+| GET | /api/messages/{id} | Get single message |
+| GET | /api/stats | Counts by source |
+| POST | /webhook/chrome-lite-mcp | Webhook for background jobs |
 
 ## Examples
 
-Create a session (finds or creates /workspace/my-app):
-  curl -X POST {{.ServeURL}}/sessions \
-    -H "X-API-Key: {{.ServeKey}}" \
-    -H "Content-Type: application/json" \
-    -d '{"name": "my-app"}'
+Create a session:
+```bash
+curl -X POST {{.ServeURL}}/sessions \
+  -H "X-API-Key: {{.ServeKey}}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app"}'
+```
 
-Create a session with a git repo:
-  curl -X POST {{.ServeURL}}/sessions \
-    -H "X-API-Key: {{.ServeKey}}" \
-    -H "Content-Type: application/json" \
-    -d '{"name": "my-app", "repo": "owner/repo"}'
+Create a session with a repo:
+```bash
+curl -X POST {{.ServeURL}}/sessions \
+  -H "X-API-Key: {{.ServeKey}}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "repo": "owner/repo"}'
+```
 
 List sessions:
-  curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
+```bash
+curl {{.ServeURL}}/sessions -H "X-API-Key: {{.ServeKey}}"
+```
 
 Kill a session:
-  curl -X DELETE {{.ServeURL}}/sessions/my-app -H "X-API-Key: {{.ServeKey}}"
+```bash
+curl -X DELETE {{.ServeURL}}/sessions/my-app -H "X-API-Key: {{.ServeKey}}"
+```
 
-Read Gmail messages:
-  curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
+Read messages:
+```bash
+curl "{{.AMURL}}/api/messages?source=gmail" -H "X-API-Key: {{.AMKey}}"
+```
 
 Message stats:
-  curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"
+```bash
+curl "{{.AMURL}}/api/stats" -H "X-API-Key: {{.AMKey}}"
+```

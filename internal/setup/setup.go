@@ -281,13 +281,15 @@ func renderDoneOutput(m model) string {
   To log into web apps, open VNC URL and sign in to
   Gmail, Discord, Zalo, etc. in Chrome.
 
-  Then create a Claude Project at claude.ai/projects
-  and paste the instructions below:
+  Save the block below as a skill file:
+    ~/.claude/skills/claudebox/SKILL.md
+
+  Or paste it into a Claude Project at claude.ai/projects
 
 `)
-	b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+	b.WriteString(ui.StyleDim.Render("─── SKILL START ────────────────────────") + "\n")
 	b.WriteString(renderInstructions(data))
-	b.WriteString(ui.StyleDim.Render("─────────────────────────────────────────") + "\n")
+	b.WriteString(ui.StyleDim.Render("─── SKILL END ──────────────────────────") + "\n")
 
 	return b.String()
 }

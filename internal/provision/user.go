@@ -79,7 +79,15 @@ claude() {
 	// Authenticate gh CLI if token file exists (saved by cloud-init)
 	if _, err := os.Stat("/root/.gh-token"); err == nil {
 		shell.RunShell(ctx, `cat /root/.gh-token | gh auth login --with-token 2>/dev/null || true`)
-		shell.RunShell(ctx, `su - claude -c "cat /root/.gh-token | gh auth login --with-token" 2>/dev/null || true`)
+		// Copy token to temp file readable by claude, then auth
+		shell.RunShell(ctx, `
+TOKEN=$(cat /root/.gh-token)
+TMPFILE=$(mktemp)
+printf '%s' "$TOKEN" > "$TMPFILE"
+chmod 644 "$TMPFILE"
+su - claude -c "cat '$TMPFILE' | gh auth login --with-token 2>/dev/null || true"
+rm -f "$TMPFILE"
+`)
 	}
 
 	return nil

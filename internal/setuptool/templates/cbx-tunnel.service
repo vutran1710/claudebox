@@ -1,0 +1,18 @@
+[Unit]
+Description=cbx API tunnel (Cloudflare quick tunnel)
+Documentation=https://github.com/vutran1710/claudebox/blob/main/docs/api-server.md
+After=network-online.target cbx-api.service
+Wants=network-online.target
+Requires=cbx-api.service
+
+[Service]
+Type=simple
+# A quick tunnel needs no Cloudflare account, and issues a new hostname every
+# time it starts. Anything holding the old URL stops working after a restart —
+# `cbx-setuptool api url` reads the current one back out.
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --url http://{{.Addr}}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

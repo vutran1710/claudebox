@@ -503,11 +503,31 @@ Rotation restarts the service deliberately: a running server holds the key it
 started with, so rewriting the file alone would leave the old key working until
 something happened to restart it.
 
-**`api forward` prints an ssh tunnel rather than opening a Cloudflare one.**
-The design named a tunnel; an `ssh -N -L` needs nothing installed on the box
-and encrypts what a plain HTTP listener does not, so it ships first. A
-terminated-HTTPS tunnel is a follow-up, and would need `cloudflared` added to
-the install steps.
+Two ways to reach it, because they serve different callers:
+
+```
+cbx-setuptool api forward --host <ip>   ssh -N -L, from a machine that can ssh
+cbx-setuptool api expose  --host <ip>   a public HTTPS tunnel, for everything else
+cbx-setuptool api url     --host <ip>   the tunnel's current hostname
+```
+
+`forward` needs nothing installed and encrypts the hop, but only works from a
+machine with ssh access to the box — which a phone and a Claude Project are
+not.
+
+`expose` installs `cloudflared` and a second unit running a **quick tunnel**:
+HTTPS terminated at Cloudflare, no account required, and a hostname that
+changes every time the tunnel restarts. `url` reads the current one, because
+anything holding the old one is holding something that no longer resolves.
+
+`cloudflared` is a `Step` — so it inherits the re-check that caught an
+installer exiting 0 having installed nothing — but deliberately **not** one of
+`InstallSteps`. A box only needs it if somebody decides to expose that box, and
+that decision should be made rather than inherited.
+
+Once exposed, the bearer key is the only thing between the internet and these
+sessions. `api expose` says so on stderr rather than leaving it to be
+realised.
 
 It is a `Step` like every other, which means it carries a `Check` that is
 re-run after it — the rule earned by an installer that exited 0 having done

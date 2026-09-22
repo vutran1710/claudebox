@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/vutran1710/claudebox/internal/setuptool"
 )
@@ -154,8 +155,29 @@ func runAPI(t setuptool.Target, action string) error {
 		fmt.Printf("key\t%s\n", key)
 	case "forward":
 		fmt.Printf("forward\t%s\n", setuptool.ForwardCommand(t, setuptool.DefaultAPIAddr))
+	case "expose":
+		if err := setuptool.InstallTunnel(t, setuptool.DefaultAPIAddr); err != nil {
+			return err
+		}
+		url, err := setuptool.TunnelURL(t, 60*time.Second)
+		if err != nil {
+			return err
+		}
+		key, keyErr := setuptool.APIKey(t)
+		fmt.Printf("url\t%s\n", url)
+		if keyErr == nil {
+			fmt.Printf("key\t%s\n", key)
+		}
+		// Worth saying plainly: this is now on the internet.
+		fmt.Fprintln(os.Stderr, "note: the tunnel is public — the bearer key is the only thing protecting these sessions, and the URL changes whenever it restarts")
+	case "url":
+		url, err := setuptool.TunnelURL(t, 10*time.Second)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("url\t%s\n", url)
 	default:
-		return fmt.Errorf("unknown api command %q (install, key, rotate, forward)", action)
+		return fmt.Errorf("unknown api command %q (install, key, rotate, forward, expose, url)", action)
 	}
 	return nil
 }
@@ -228,6 +250,15 @@ func runStatus(t setuptool.Target) error {
 		step(tick, "cbx-api", "running on "+setuptool.DefaultAPIAddr)
 	} else {
 		step(cross, "cbx-api", "not running — `cbx-setuptool api install`")
+	}
+	if setuptool.TunnelRunning(t) {
+		if url, err := setuptool.TunnelURL(t, 5*time.Second); err == nil {
+			step(tick, "cbx-tunnel", url)
+		} else {
+			step(tick, "cbx-tunnel", "running, no URL in the journal yet")
+		}
+	} else {
+		step(skip, "cbx-tunnel", "not exposed — `cbx-setuptool api expose`")
 	}
 	fmt.Println()
 	return nil

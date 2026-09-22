@@ -112,3 +112,81 @@ func TestTheShippedSpecIsWhatGetsUploaded(t *testing.T) {
 		t.Fatalf("the spec shipped to boxes does not parse: %v", err)
 	}
 }
+
+// --- tunnel ---
+
+func renderTunnel(t *testing.T, addr string) string {
+	t.Helper()
+	tmpl, err := template.New("tunnel").Parse(tunnelUnitTemplate)
+	if err != nil {
+		t.Fatalf("the embedded tunnel unit does not parse: %v", err)
+	}
+	var b bytes.Buffer
+	if err := tmpl.Execute(&b, struct{ Addr string }{addr}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	return b.String()
+}
+
+func TestTheTunnelUnitPointsAtTheAPI(t *testing.T) {
+	got := renderTunnel(t, DefaultAPIAddr)
+	if strings.Contains(got, "{{") {
+		t.Errorf("a placeholder survived rendering:\n%s", got)
+	}
+	if !strings.Contains(got, "--url http://"+DefaultAPIAddr) {
+		t.Errorf("unit does not point at the API:\n%s", got)
+	}
+}
+
+func TestTheTunnelWaitsForTheAPI(t *testing.T) {
+	got := renderTunnel(t, DefaultAPIAddr)
+	// A tunnel to a server that is not up yet resolves to a 502 for whoever
+	// opens the URL first.
+	if !strings.Contains(got, "Requires=cbx-api.service") {
+		t.Errorf("unit does not require the API service:\n%s", got)
+	}
+}
+
+// Real cloudflared output. A simplified fixture would pass while being wrong
+// about the shape, which is how the settings.json portability pass first
+// shipped broken.
+const cloudflaredLog = `Jan 02 15:04:05 box cloudflared[123]: 2026-01-02T15:04:05Z INF Requesting new quick Tunnel on trycloudflare.com...
+Jan 02 15:04:07 box cloudflared[123]: 2026-01-02T15:04:07Z INF +----------------------------------------------------------+
+Jan 02 15:04:07 box cloudflared[123]: 2026-01-02T15:04:07Z INF |  Your quick Tunnel has been created! Visit it at         |
+Jan 02 15:04:07 box cloudflared[123]: 2026-01-02T15:04:07Z INF |  https://calm-river-fox-1234.trycloudflare.com           |
+Jan 02 15:04:07 box cloudflared[123]: 2026-01-02T15:04:07Z INF +----------------------------------------------------------+`
+
+func TestFindTunnelURLReadsCloudflaredOutput(t *testing.T) {
+	if got := FindTunnelURL(cloudflaredLog); got != "https://calm-river-fox-1234.trycloudflare.com" {
+		t.Errorf("FindTunnelURL = %q", got)
+	}
+}
+
+func TestFindTunnelURLTakesTheMostRecent(t *testing.T) {
+	// A restarted tunnel leaves the previous hostname in the journal, and that
+	// one no longer resolves.
+	two := cloudflaredLog + "\nJan 02 16:00:00 box cloudflared[999]: INF |  https://new-hostname-5678.trycloudflare.com  |"
+	if got := FindTunnelURL(two); got != "https://new-hostname-5678.trycloudflare.com" {
+		t.Errorf("FindTunnelURL = %q, want the most recent", got)
+	}
+}
+
+func TestFindTunnelURLIsEmptyWhenThereIsNone(t *testing.T) {
+	if got := FindTunnelURL("INF Requesting new quick Tunnel...\nINF connecting"); got != "" {
+		t.Errorf("FindTunnelURL = %q, want empty", got)
+	}
+}
+
+func TestCloudflaredIsCheckableAndNotInstalledByDefault(t *testing.T) {
+	s := CloudflaredStep()
+	if s.Check == nil || s.Do == nil {
+		t.Fatal("the cloudflared step is missing Check or Do")
+	}
+	// Exposing a box is meant to be a decision, so cloudflared is not put on
+	// every box that runs setup.
+	for _, installed := range InstallSteps() {
+		if installed.Name == s.Name {
+			t.Error("cloudflared is in the default install steps — exposure should be explicit")
+		}
+	}
+}

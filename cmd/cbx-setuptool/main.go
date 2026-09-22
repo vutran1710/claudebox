@@ -95,7 +95,7 @@ token path. Everything else can be answered from environment variables.`,
 func apiCmd() *cobra.Command {
 	var host, user string
 	cmd := &cobra.Command{
-		Use:   "api <install|key|rotate|forward>",
+		Use:   "api <install|key|rotate|forward|expose|url>",
 		Short: "Manage the HTTP API on the box",
 		Long: `Installs or operates the API server.
 
@@ -103,13 +103,19 @@ func apiCmd() *cobra.Command {
   key       print the key the box currently accepts
   rotate    issue a new key and restart the server onto it
   forward   print the ssh command that reaches the API from here
+  expose    open a public HTTPS tunnel and print its URL
+  url       print the tunnel's current URL
 
-The API binds 127.0.0.1. Over plain HTTP a public listener would put the
-bearer key and every prompt on the wire in cleartext, so reaching it is a
-deliberate act — forward prints the tunnel that does it without installing
-anything on the box.`,
+The API binds 127.0.0.1, so reaching it is a deliberate act. forward needs
+nothing installed and encrypts the hop, but only from a machine that can ssh
+to the box. expose installs a Cloudflare quick tunnel instead, which a phone
+or a Claude Project can reach — its hostname changes every time the tunnel
+restarts, and url reads the current one.
+
+Either way the bearer key is the only thing standing between the internet and
+these sessions.`,
 		Example: "  cbx-setuptool api install --host 203.0.113.9\n" +
-			"  cbx-setuptool api rotate --host 203.0.113.9",
+			"  cbx-setuptool api expose --host 203.0.113.9",
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			t, err := target(host, user)

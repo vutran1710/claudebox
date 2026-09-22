@@ -88,8 +88,8 @@ GET    /sessions                         both kinds, reconciled against tmux
 GET    /sessions/{name}                  dir, kind, status, session_id, turns
 DELETE /sessions/{name}                  forget it
 
-POST   /sessions/{name}/query            {prompt} → 200 answer | 202 job
-GET    /jobs/{id}                        poll a query that outran the threshold
+POST   /sessions/{name}/query?timeout=   {prompt} → 200 answer | 202 job
+GET    /jobs/{id}?timeout=               poll, or long-poll, a query in flight
 
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
@@ -107,7 +107,7 @@ connection to keep warm, and nothing to leak when a client disappears.
 a reason to change that. There is no process to stop either: a headless session
 is a uuid between queries, not a running thing.
 
-### Query: synchronous, with an escape hatch
+### Query: the caller sets how long it will wait
 
 A query holds the connection until Claude finishes, and returns the answer:
 
@@ -116,18 +116,60 @@ POST /sessions/api-work/query   {"prompt": "what changed in the store?"}
 200  {"answer": "...", "session_id": "...", "turns": 3, "duration_ms": 8200}
 ```
 
-Past a threshold (default 30s) the server stops waiting, hands back a job id,
-and the caller polls:
+How long the server holds it open is the **caller's** decision, not a threshold
+the server guessed:
+
+```
+POST /sessions/api-work/query?timeout=90
+```
+
+Default `300` (five minutes). A bare integer is seconds; a Go duration string
+(`90s`, `5m`) is also accepted, so `timeout=5m` does what it obviously means
+instead of failing to parse.
+
+The server knows how long Claude usually takes; only the caller knows what *it*
+can hold open. A phone on a train, a Cloudflare tunnel and a cron job have three
+different answers, and a server-side constant is wrong for at least two of them.
+
+When the deadline passes, the caller gets a job id and polls:
 
 ```
 202  {"job": "j_01H...", "poll": "/jobs/j_01H..."}
 GET  /jobs/j_01H...   → {"status":"running"} … {"status":"done","answer":"..."}
 ```
 
-This keeps the common case to one round trip while making a ten-minute query
-survive a proxy that would have closed the connection. The cost is real and
-worth stating plainly: **every client must handle both response shapes.** A
-client that only reads `answer` will break the first time a query runs long.
+**`timeout` is a response deadline, not a cancellation deadline.** This is the
+one thing about the parameter that can be misread, and the misreading is
+expensive: the query does *not* stop when the deadline passes. Claude keeps
+working, the answer lands in the job, and it is waiting whenever the caller
+asks. Nothing is lost by choosing a short timeout — the only thing it changes
+is whether you are told now or told later.
+
+`timeout=0` is therefore useful rather than degenerate: it returns `202`
+immediately without waiting at all, which is exactly what a fire-and-forget
+caller wants.
+
+The ceiling is `900` (fifteen minutes). Above it the request is refused with
+`400` naming the maximum, rather than silently clamped — a server that quietly
+does something other than what was asked is the failure this project keeps
+finding in other people's installers, and it should not ship one.
+
+The same parameter long-polls a job, so a caller that wants the answer the
+moment it exists does not have to spin:
+
+```
+GET /jobs/j_01H...?timeout=60     → waits up to 60s for it to finish
+```
+
+**Implementation note, because this is where it will break:** the server's own
+`WriteTimeout` must exceed the maximum `timeout` it accepts, or the transport
+closes connections the parameter explicitly permitted. `ReadHeaderTimeout` stays
+short; it is what defends against a slow-header client, and it is unrelated to
+how long a handler may run.
+
+The cost of all this is real and worth stating plainly: **every client must
+handle both response shapes.** A client that only reads `answer` will break the
+first time a query outruns its own timeout.
 
 **Jobs are in-memory and do not survive a restart.** That is honest rather than
 lazy: a query is a child `claude -p` process, systemd restarting `cbx serve`
@@ -290,5 +332,12 @@ tested with `httptest` against a fake session source.
 3. **What happens to a headless session's transcript on `DELETE`?** The row goes.
    Claude Code's own `.jsonl` stays on disk. That is probably right — it is the
    record of work — but nothing prunes it.
-4. **Job TTL.** Results sit in memory until read. A client that never polls
-   leaks one answer's worth of memory per query.
+4. **Job TTL.** Results sit in memory until read. `timeout=0` makes a
+   never-polling client easy to write by accident, so this needs an answer
+   before the parameter ships: expire a finished job after some interval, or
+   cap how many a session may accumulate.
+5. **Is there a way to actually cancel a query?** `timeout` deliberately does
+   not, and a runaway `claude -p` currently runs to completion holding the
+   session's lock. `DELETE /jobs/{id}` killing the child is the obvious
+   answer; it is not in this design because cancelling mid-turn leaves the
+   conversation in a state nothing has tested.

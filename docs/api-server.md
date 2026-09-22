@@ -92,6 +92,8 @@ POST   /sessions/{name}/query            {prompt, respond_within} → 200 | 202 
 GET    /jobs/{id}?respond_within=        poll, or long-poll, a query in flight
 DELETE /jobs/{id}                        cancel a running query, or discard a result
 
+POST   /sessions/{name}/command          {command} → runs a declared slash command
+
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
 ```
@@ -179,6 +181,84 @@ long a handler may run.
 The cost is real and worth stating plainly: **every client must handle both
 response shapes.** One that only reads `answer` will break the first time a
 query outruns its own window.
+
+### Commands are declared in a spec, not guessed at
+
+One endpoint sends a slash command to a session:
+
+```
+POST /sessions/api-work/command   {"command": "/model sonnet"}
+```
+
+What it will do is not inferred from the command string. A YAML spec on the box
+declares which commands the API accepts and how each one is carried out, and the
+server reads it on every request, so adding a command is an edit rather than a
+release.
+
+```yaml
+# ~/.config/cbx/commands.yaml
+version: 1
+commands:
+  - name: /clear
+    effect: rotate-session      # cbx implements it; forwarding silently fails
+    description: Start a fresh conversation, discarding history
+  - name: /model
+    effect: forward
+    requires_args: true         # bare /model only prints its usage
+  - name: /compact
+    effect: forward
+    expect_empty: true
+```
+
+Anything not named in `commands` is refused with `400`. **Deny by default is
+not caution here, it is the only option available** — see below.
+
+`effect` is what the server does, and the two values exist because forwarding is
+not always capable of the thing the command names:
+
+| effect | server does |
+|---|---|
+| `forward` | runs it through `claude -p --resume <uuid>` and returns the result |
+| `rotate-session` | cbx performs it natively; `/clear` is the case that needs this |
+
+It lives under `XDG_CONFIG_HOME`, not `XDG_STATE_HOME`. This is hand-edited
+policy, not generated data cbx can rebuild — the opposite of `sessions.db`. A
+default is embedded in the binary and written out when the file is absent, so a
+fresh box works before anyone edits anything.
+
+### Why the spec has to be an allowlist
+
+Measured against Claude Code 2.1.236, in print mode:
+
+| command | `is_error` | `turns` | `result` |
+|---|---|---|---|
+| `/model` | false | 0 | usage text, listing the available models |
+| `/model sonnet` | false | 0 | `Set model to Sonnet 5 for this session only` |
+| `/compact` | false | 0 | *empty* |
+| `/clear` | false | 0 | *empty* — and the conversation is **not** cleared |
+| `/help` | false | 0 | `/help isn't available in this environment.` |
+| `/nonexistent-command-xyz` | false | 0 | `Unknown command: /nonexistent-command-xyz` |
+
+Every row reports success. A command that does not exist reports success. A
+command refusing to run in this environment reports success. **There is no
+programmatic signal to gate on**, which is why the gate has to be a list
+somebody wrote down, and why detection cannot be promoted into one.
+
+`turns: 0` is also not a failure signal — it means the command was handled
+locally without a model call, which is true of every one of these including the
+ones that worked.
+
+Two things the spec still cannot catch, so the server checks them anyway:
+
+- **A forked conversation.** `claude -p` returns the `session_id` it actually
+  used. When that differs from the one requested, the command ran somewhere
+  other than the session it was aimed at, and the response says so rather than
+  reporting a success that landed elsewhere.
+- **`/clear` in particular.** Forwarded, it returns empty, reports success,
+  forks a new id, and leaves the transcript intact — verified by asking for a
+  codeword afterwards and getting it back. That is why it is `rotate-session`
+  and not `forward`: cbx allocates a new conversation id and resets `turns`, and
+  the history is genuinely gone from the session's point of view.
 
 ### Jobs are rows, and a janitor sweeps them
 
@@ -451,6 +531,7 @@ internal/api/       HTTP only — routes, bearer auth, handlers
 internal/claude/    the claude -p seam — build argv, exec, parse the JSON result
 internal/store/     + kind, claude_session_id, system_prompt, turns; + jobs
   detach.go         re-exec with Setsid, the flock, --stop's group signal
+  commands.go       load the spec, resolve a command to its effect
 cmd/cbx/            + serve [--detach|--stop], + api-key show|rotate
 internal/setuptool/ + the --with-api step, + api expose|rotate
 ```
@@ -485,10 +566,36 @@ tested with `httptest` against a fake session source.
    can continue from is untested, and it is the one part of cancellation that
    cannot be reasoned about from the flags. Needs an experiment before the
    endpoint is trusted, not an assumption written down here.
-6. **Crash consistency between `turns` and the transcript.** If the first query
-   completes but the server dies before recording `turns = 1`, a restart reads
-   `0` and passes `--session-id` for a conversation that already exists.
-   Ordering the write earlier only moves the problem, so one direction needs a
-   fallback — probably attempting `--resume` and retrying with `--session-id`
-   when no conversation is found. Which way depends on how `--resume` actually
-   behaves against a missing id, which is worth testing rather than guessing.
+6. **A YAML parser is a fourth dependency.** `gopkg.in/yaml.v3` for a file with
+   one list in it, in a project that deliberated hard over adding its third.
+   JSON parses with the standard library and costs nothing; YAML is nicer to
+   hand-edit, and this file is meant to be hand-edited. Worth a deliberate
+   answer rather than defaulting to whichever gets typed first.
+
+## Settled by experiment
+
+Recorded because each of these was going to be guessed at, and two of the
+guesses would have been wrong. All against Claude Code 2.1.236.
+
+**`--resume` against an unknown id fails loudly.** It prints
+`No conversation found with session ID: <uuid>` as plain text, not JSON, so it
+cannot be mistaken for a result. The crash window between `turns` and the
+conversation actually existing therefore has a safe resolution: attempt
+`--resume`, and fall back to `--session-id` on that error. Ordering the `turns`
+write no longer has to be perfect.
+
+**`--session-id` creates a conversation and `--resume` continues it**, with the
+id stable across resumes. Seeded a codeword, resumed, got it back.
+
+**Slash commands execute locally in print mode** — `turns: 0`,
+`duration_api_ms: 0`, no tokens spent. They are not sent to the model as
+prompts.
+
+**`/clear` does not clear a resumed conversation.** It reports success, forks a
+fresh id, and leaves the transcript intact; the codeword was still recalled
+afterwards. This is the reason `/clear` is `rotate-session` rather than
+`forward`.
+
+**Nothing hangs.** Commands that open a picker interactively return in a few
+seconds in print mode rather than waiting on input that cannot arrive. There is
+no stuck child holding a session lock to design around.

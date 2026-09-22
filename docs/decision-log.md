@@ -387,3 +387,44 @@ is that specific path on a remote box, not the code.
 
 Real tokens for gh/vercel/supabase. The plumbing and the rejection path are
 proven; a successful login with a valid token is not.
+
+## `migrate` follows symlinks, reversing a deliberate skip
+
+`uploadDir` skipped anything that was not a regular file, with the reasoning
+that "a symlink under skills/ would otherwise be dereferenced and ship the
+contents of whatever it points at — skills come from marketplaces". That is a
+sound worry and it produced the opposite failure.
+
+Run against a real configuration directory, `agents/` sent **zero** files and
+printed a tick. Its four entries were symlinks into a dotfiles repository,
+which is how a lot of people keep this directory. The concern was about
+shipping content nobody asked for; the behaviour was shipping nothing while
+claiming otherwise — the same shape as the installer that exits 0 having done
+nothing, which `Step.Run` already exists to catch.
+
+Symlinks are now followed with `os.Stat`, so a link to a file copies the file.
+Anything that is not a file after resolution is simply not copied. The original
+concern survives in the part that mattered: a directory link is not descended
+into.
+
+`Copied` also carries a file count now, and setup prints a cross rather than a
+tick when it is zero. The report could not previously distinguish a copy from a
+no-op, which is why this went unnoticed.
+
+**Wrong if** someone's configuration directory contains links to things they do
+not intend to publish, at which point `--filter` is the answer — it names what
+travels, and now defaults to naming `rules` too, which was missing entirely.
+
+## `migrate` takes a directory and a filter
+
+`cbx-setuptool migrate --claude-dir <dir> --filter skills,rules,agents`.
+
+Neither was configurable before: the source was hardcoded to `~/.claude` and
+the contents to a list in the source. A machine may keep more than one Claude
+directory, and the one worth shipping to a box is not always the one Claude
+Code reads locally.
+
+Selection is a pure `Plan` that runs before anything touches the network, so a
+filter entry naming something absent, or escaping the directory, is answered
+immediately rather than after an ssh timeout against a box that was never the
+problem.

@@ -63,7 +63,7 @@ rather than vanishing, and a Remote Control URL survives a tmux restart.
 ```
 cbx-setuptool setup   --host <ip> --binary <linux-cbx>   the whole flow
 cbx-setuptool auth    --host <ip> [github|vercel|supabase]
-cbx-setuptool migrate --host <ip>    push ~/.claude skills, agents, settings
+cbx-setuptool migrate --host <ip> [--claude-dir <dir>] [--filter a,b]
 cbx-setuptool status  --host <ip>    what is installed and authenticated
 ```
 
@@ -72,9 +72,18 @@ arguments, where they would be visible in the box's process table. A token
 already in your environment (`GH_TOKEN`, `VERCEL_TOKEN`,
 `SUPABASE_ACCESS_TOKEN`) is used without asking.
 
+`migrate` copies the parts of a Claude configuration directory that shape a
+session — by default `skills`, `agents`, `rules`, `settings.json` and the
+plugin manifest. `--claude-dir` picks which directory to copy from, and
+`--filter` picks what inside it travels, so neither is fixed.
+
 `settings.json` is rewritten on the way: paths under your home directory are
 remapped, and hooks calling binaries the box does not have are dropped and
 reported. Copied verbatim they would fail on every edit inside every session.
+
+Each entry is reported with the number of files it actually sent, because a
+directory of symlinks into a dotfiles repository once migrated as empty and
+was reported as copied.
 
 ## Testing
 

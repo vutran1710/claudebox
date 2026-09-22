@@ -9,6 +9,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/vutran1710/claudebox/internal/setuptool"
@@ -167,26 +169,51 @@ token path. Use setup for that.`,
 }
 
 func migrateCmd() *cobra.Command {
-	var host, user string
+	var host, user, claudeDir string
+	var filter []string
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Copy your local Claude config to the box",
-		Long: `Copies the parts of ~/.claude that shape a session: skills, agents,
-settings.json, and the plugin manifest.
+		Short: "Copy local Claude config to the box",
+		Long: `Copies the parts of a Claude configuration directory that shape a session.
+
+--claude-dir names the directory to copy from, defaulting to ~/.claude. It is
+a flag rather than a fixed path because a machine may keep more than one, and
+the one worth shipping to a box is not always the one Claude Code reads here.
+
+--filter names what to copy, relative to that directory. Entries may be
+directories or files. The default is:
+
+  skills, agents, rules, settings.json,
+  plugins/installed_plugins.json, plugins/known_marketplaces.json
 
 Not caches, not session transcripts, and not the plugin bundles themselves —
-the box re-fetches those from the manifest, which is a few kilobytes instead of
-a few hundred megabytes.`,
-		Example: "  cbx-setuptool migrate --host 203.0.113.9",
-		Args:    cobra.NoArgs,
+the box re-fetches those from the manifest, a few kilobytes instead of a few
+hundred megabytes.
+
+settings.json is rewritten on the way: home paths are remapped and hooks
+calling binaries the box lacks are dropped and reported.
+
+Symlinks are followed when they point at a file, so a configuration directory
+whose entries link into a dotfiles repository migrates rather than arriving
+empty. A symlink to a directory is reported, not followed.`,
+		Example: "  cbx-setuptool migrate --host 203.0.113.9\n" +
+			"  cbx-setuptool migrate --host 203.0.113.9 --filter skills,rules,agents\n" +
+			"  cbx-setuptool migrate --host 203.0.113.9 --claude-dir ~/dotfiles/claude",
+		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			t, err := target(host, user)
 			if err != nil {
 				return err
 			}
-			copied, dropped, err := setuptool.MigrateConfig(t)
+			dir, err := expandHome(claudeDir)
+			if err != nil {
+				return err
+			}
+			copied, dropped, err := setuptool.MigrateConfig(t, setuptool.MigrateOptions{
+				Dir: dir, Only: filter,
+			})
 			for _, c := range copied {
-				fmt.Printf("copied\t%s\n", c)
+				fmt.Printf("copied\t%s\t%d\n", c.Path, c.Files)
 			}
 			for _, d := range dropped {
 				fmt.Printf("dropped\t%s\t%s\n", d.Path, d.Reason)
@@ -196,7 +223,28 @@ a few hundred megabytes.`,
 	}
 	cmd.Flags().StringVar(&host, "host", "", "IP or hostname of the box (required)")
 	cmd.Flags().StringVar(&user, "user", "root", "SSH user")
+	cmd.Flags().StringVar(&claudeDir, "claude-dir", "", "Local Claude directory to copy from (default ~/.claude)")
+	cmd.Flags().StringSliceVar(&filter, "filter", nil, "What to copy, comma-separated (default skills,agents,rules,settings.json,plugins manifest)")
 	return cmd
+}
+
+// expandHome resolves a leading ~ so --claude-dir ~/x works when a shell has
+// not already done it.
+func expandHome(path string) (string, error) {
+	if path == "" || !strings.HasPrefix(path, "~") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if path == "~" {
+		return home, nil
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:]), nil
+	}
+	return path, nil
 }
 
 func statusCmd() *cobra.Command {

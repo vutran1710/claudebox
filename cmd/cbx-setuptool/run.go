@@ -86,9 +86,15 @@ func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude, withAPI b
 	}
 
 	fmt.Println("\nConfig")
-	copied, dropped, err := setuptool.MigrateConfig(t)
+	copied, dropped, err := setuptool.MigrateConfig(t, setuptool.MigrateOptions{})
 	for _, c := range copied {
-		step(tick, c, "")
+		if c.Files == 0 {
+			// Reporting a tick here is how an empty directory once looked
+			// like a successful copy.
+			step(cross, c.Path, "nothing to copy")
+			continue
+		}
+		step(tick, c.Path, fmt.Sprintf("%d files", c.Files))
 	}
 	for _, d := range dropped {
 		step(skip, d.Path, "dropped — "+d.Reason)

@@ -35,7 +35,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          # Read from go.mod so the toolchain has one definition. Pinned here
+          # it drifted: go.mod asked for 1.25.3 while this said 1.24, and
+          # releases built only because the toolchain downloaded itself.
+          go-version-file: go.mod
 
       - name: Build
         env:

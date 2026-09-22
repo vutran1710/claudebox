@@ -83,7 +83,8 @@ Every endpoint except `/healthz` requires `Authorization: Bearer <key>`.
 GET    /healthz                          no auth → {status, version}
 POST   /auth/rotate                      → {api_key}; the old key dies immediately
 
-POST   /sessions                         {name, repo?, system_prompt?} → headless
+POST   /sessions                         {name, repo?, system_prompt?,
+                                          permission_mode?} → headless
 GET    /sessions                         both kinds, reconciled against tmux
 GET    /sessions/{name}                  dir, kind, status, session_id, turns
 DELETE /sessions/{name}                  forget it
@@ -105,9 +106,13 @@ transcript, and cbx only stores its id. So "open a session" is a plain read of
 the session row, and there is no open/close lifecycle on the server, no
 connection to keep warm, and nothing to leak when a client disappears.
 
-`DELETE` forgets the record. It does **not** delete the project directory —
-`cbx kill` has always refused to delete someone's work, and an HTTP verb is not
-a reason to change that.
+`DELETE` forgets the record and deletes the conversation transcript at
+`~/.claude/projects/<escaped-cwd>/<uuid>.jsonl`. Closing a session should not
+leave its history readable on the box afterwards.
+
+It does **not** delete the project directory. `cbx kill` has always refused to
+delete someone's work, and an HTTP verb is not a reason to change that — the
+transcript is the session, the directory is the work.
 
 Between queries there is no process to stop: a headless session is a uuid, not a
 running thing. During one there is, and `DELETE` cancels it before forgetting
@@ -489,8 +494,20 @@ Three columns and a counter on `sessions`:
 kind              TEXT    NOT NULL DEFAULT 'interactive'
 claude_session_id TEXT    NOT NULL DEFAULT ''
 system_prompt     TEXT    NOT NULL DEFAULT ''
+permission_mode   TEXT    NOT NULL DEFAULT ''
 turns             INTEGER NOT NULL DEFAULT 0
 ```
+
+`permission_mode` is set once, when the session is created, and passed to every
+query as `--permission-mode`. It is a property of the session rather than of a
+request: a caller that could raise its own permissions per query would make the
+setting meaningless. Empty means cbx's default for a headless session, which is
+the same `bypassPermissions` premise the tmux sessions run on and named in the
+same deliberate way — a query has nobody to answer a prompt either.
+
+Accepted values are Claude Code's own: `acceptEdits`, `auto`,
+`bypassPermissions`, `manual`. Anything else is `400` at session creation
+rather than a flag rejected later by a child process nobody is watching.
 
 Existing rows default to `interactive`, which is correct: every session
 recorded before this feature was a tmux session.
@@ -543,34 +560,34 @@ the only part that needs a real Claude.
 `internal/api` depends on interfaces, not on `*cbx.App`, so handlers can be
 tested with `httptest` against a fake session source.
 
-## Open questions
+## Decided, with what would make each wrong
 
-1. **Does `cbx query <name> "<prompt>"` exist?** It fits the non-interactive
-   contract perfectly and would let the master session query a headless
-   conversation without HTTP. Not in scope here; worth asking before the API is
-   the only way in.
-2. **Is `--permission-mode bypassPermissions` right for print mode?** A headless
-   query has nobody to answer a prompt, same as a phone-driven session. The
-   premise holds, but it is a new place to take that risk and should be a named
-   constant with the reasoning attached, as `autonomousClaude` already is.
-3. **What happens to a headless session's transcript on `DELETE`?** The row goes.
-   Claude Code's own `.jsonl` stays on disk. That is probably right — it is the
-   record of work — but nothing prunes it.
-4. **How long is a finished job kept?** The mechanism is settled — `expires_at`
-   on the row, swept every ten minutes — but the window is not. An hour is the
-   obvious starting point. A phone that polls the next morning wants longer, and
-   answers are stored in full, so the number is a storage decision as much as a
-   usability one.
-5. **What does a cancelled turn leave behind?** `DELETE` on a running job kills
-   `claude -p` mid-turn. Whether the transcript is left in a state `--resume`
-   can continue from is untested, and it is the one part of cancellation that
-   cannot be reasoned about from the flags. Needs an experiment before the
-   endpoint is trusted, not an assumption written down here.
-6. **A YAML parser is a fourth dependency.** `gopkg.in/yaml.v3` for a file with
-   one list in it, in a project that deliberated hard over adding its third.
-   JSON parses with the standard library and costs nothing; YAML is nicer to
-   hand-edit, and this file is meant to be hand-edited. Worth a deliberate
-   answer rather than defaulting to whichever gets typed first.
+**No `cbx query` on the CLI.** The API is the way in. It would have been a
+second door onto the same conversation for no capability the first does not
+already have. *Wrong if* the master session ever needs to query a headless
+conversation while the API server is down, which is an argument for making the
+server more reliable rather than for a second entry point.
+
+**`permission_mode` is per session, set at creation, in the request body.** It
+is a property of the session, not of a request: a caller that could raise its
+own permissions per query would make the setting meaningless. *Wrong if* a
+single session genuinely needs different permissions per task, at which point
+the answer is two sessions.
+
+**`DELETE` removes the transcript.** Closing a session should not leave its
+history readable on the box. The project directory survives. *Wrong if* someone
+expects `DELETE` to be recoverable — it is not, and the endpoint should say so
+in its error text rather than in this file.
+
+**A finished job is kept one hour.** Long enough that a dropped response can be
+retried, short enough that unread answers do not accumulate. *Wrong if* a phone
+that polls the next morning turns out to be the normal case, which would make
+this a day.
+
+**YAML for the command spec**, `gopkg.in/yaml.v3`, accepted as a fourth
+dependency. The file exists to be hand-edited and JSON is unpleasant to
+hand-edit. *Wrong if* the spec stops being hand-edited and becomes generated, at
+which point the dependency buys nothing the standard library does not.
 
 ## Settled by experiment
 
@@ -599,3 +616,134 @@ afterwards. This is the reason `/clear` is `rotate-session` rather than
 **Nothing hangs.** Commands that open a picker interactively return in a few
 seconds in print mode rather than waiting on input that cannot arrive. There is
 no stuck child holding a session lock to design around.
+
+**A killed turn leaves a resumable conversation.** `SIGKILL` to a `claude -p`
+ten seconds into a long answer still left a 31-line transcript, and `--resume`
+continued from it with the session id intact. Claude even described the state
+correctly — *"You asked for a 1200-word essay on the history of the bicycle,
+which I haven't written yet."*
+
+This is what makes `DELETE /jobs/{id}` safe to offer. Cancelling costs the turn
+in flight and nothing else; there is no corrupted transcript to repair and no
+session to quarantine afterwards.
+
+**Transcripts live at `~/.claude/projects/<escaped-cwd>/<uuid>.jsonl`**, which
+is how `DELETE /sessions/{name}` finds the one to remove. The directory name is
+the working directory with separators escaped, so it is derivable from what the
+session row already stores.
+
+## Test spec
+
+Every test is **ADD** — none of this exists yet. Go's testing package
+throughout; `unit` needs nothing external, `integration` drives a real SQLite
+file and a real `claude` binary and skips when one is absent, the way
+`tests/session_lifecycle_test.go` already skips without tmux.
+
+Bodies are omitted deliberately. Names state the behaviour; the bodies land
+with the implementation.
+
+### `internal/api` — auth (unit, httptest)
+
+| test | asserts |
+|---|---|
+| `TestHealthzNeedsNoKey` | `/healthz` answers `200` with no header at all |
+| `TestEveryOtherRouteRejectsAMissingKey` | parameter rows over each route → `401` |
+| `TestAWrongKeyIsRejected` | a well-formed key that is not the stored one → `401` |
+| `TestKeyComparisonIsConstantTime` | asserts `subtle.ConstantTimeCompare` is reached, not timing — the guard is that `==` never appears on the key path |
+| `TestRotateRequiresTheCurrentKey` | rotate without a valid key → `401`, and the key is unchanged |
+| `TestTheOldKeyDiesImmediatelyAfterRotation` | old key → `401` on the very next request |
+| `TestRotateReturnsAKeyThatWorks` | the returned key authenticates |
+
+### `internal/api` — sessions (unit, httptest, fake session source)
+
+| test | asserts |
+|---|---|
+| `TestCreateMakesAHeadlessSession` | `kind` is `headless`; a conversation id is allocated; `turns` is `0` |
+| `TestCreateStoresThePermissionMode` | the mode from the body reaches the row |
+| `TestCreateRejectsAnUnknownPermissionMode` | rows over `acceptEdits, auto, bypassPermissions, manual, nonsense` → last one `400` |
+| `TestListReportsBothKinds` | a tmux session and a headless one both appear |
+| `TestMutatingAnInteractiveSessionIsRefused` | rows over query/command/delete → `409` naming Remote Control |
+| `TestDeleteRemovesTheRowAndTheTranscript` | the `.jsonl` is gone afterwards |
+| `TestDeleteLeavesTheProjectDirectory` | the working directory survives |
+| `TestDeleteCancelsAQueryInFlight` | a running job for that session ends `cancelled` |
+
+### `internal/api` — query and jobs (unit, httptest)
+
+| test | asserts |
+|---|---|
+| `TestQueryRequiresRespondWithin` | omitted → `400`; the message names the field |
+| `TestRespondWithinAcceptsSecondsAndDurations` | rows: `90`, `"90s"`, `"5m"` all parse to the same window |
+| `TestRespondWithinAboveTheCeilingIsRefused` | `"20m"` → `400` naming the maximum, and is **not** clamped |
+| `TestZeroRespondWithinReturnsAJobImmediately` | `"0s"` → `202` without waiting |
+| `TestAnAnswerInsideTheWindowReturns200` | body carries `answer`, `session_id`, `turns` |
+| `TestAnAnswerOutsideTheWindowReturns202` | body carries `job` and `poll`; the query keeps running |
+| `TestASecondQueryOnABusySessionIsRefused` | `409`; the unique index is what rejects it |
+| `TestJobPollReturnsRunningThenDone` | status transitions without long-polling |
+| `TestJobLongPollWaitsForCompletion` | `?respond_within=` on `GET /jobs/{id}` |
+| `TestDeletingARunningJobCancelsIt` | child is signalled; status becomes `cancelled` |
+| `TestDeletingAFinishedJobDiscardsIt` | subsequent `GET` → `404` |
+
+### `internal/api` — the command spec (unit)
+
+| test | asserts |
+|---|---|
+| `TestACommandNotInTheSpecIsRefused` | deny by default → `400` |
+| `TestRequiresArgsIsEnforced` | bare `/model` → `400`; `/model sonnet` proceeds |
+| `TestClearRotatesTheConversationInsteadOfForwarding` | a new conversation id, `turns` back to `0`, and no `claude -p` invocation |
+| `TestForwardEffectRunsTheCommand` | argv carries the command text |
+| `TestAForkedSessionIdIsReportedNotSwallowed` | returned id ≠ requested → `409`, never a `200` |
+| `TestSpecIsRereadPerRequest` | editing the file changes behaviour with no restart |
+| `TestAMalformedSpecIsAnErrorNotAnEmptyAllowlist` | refuses to start rather than silently denying everything |
+
+### `internal/claude` — argv construction (unit, pure)
+
+The whole point of the seam: argv is a value, so it is asserted without running
+Claude.
+
+| test | asserts |
+|---|---|
+| `TestFirstQueryCreatesTheConversation` | `turns == 0` → `--session-id <uuid>`, never `--resume` |
+| `TestLaterQueriesResumeIt` | `turns > 0` → `--resume <uuid>` |
+| `TestSystemPromptIsAppendedNotReplaced` | `--append-system-prompt`, never `--system-prompt` |
+| `TestPermissionModeIsPassedThrough` | `--permission-mode <mode>` when set, absent when empty |
+| `TestOutputIsAlwaysJSON` | `--output-format json` on every invocation |
+| `TestResultParsesAnswerAndSessionId` | rows over real captured JSON payloads |
+| `TestMissingConversationIsRecognised` | `No conversation found with session ID` → a typed error, not a parse failure |
+| `TestAMissingConversationFallsBackToCreating` | that error retries with `--session-id` |
+
+### `internal/store` — jobs (unit, real SQLite)
+
+| test | asserts |
+|---|---|
+| `TestJobRoundTrips` | insert, read back, fields intact |
+| `TestOnlyOneRunningJobPerSession` | a second insert violates the unique index |
+| `TestAFinishedJobFreesTheSession` | the index permits the next one |
+| `TestSweepDeletesExpiredFinishedJobs` | injected clock; no sleeping |
+| `TestSweepSparesARunningJobPastItsExpiry` | the row a client is still waiting on survives |
+| `TestBootRecoveryMarksRunningJobsInterrupted` | and thereby clears the unique index |
+| `TestExistingSessionsMigrateToInteractive` | a pre-feature database gains the columns with `kind = 'interactive'` |
+
+### `internal/api` — detach (unit + integration)
+
+| test | asserts |
+|---|---|
+| `TestDetachedServerSurvivesItsParent` | integration; the parent exits, the server answers `/healthz` |
+| `TestTheLockIsHeldWhileRunning` | a second `serve` refuses to start |
+| `TestTheLockIsReleasedWhenTheProcessDies` | `SIGKILL` the server, the lock is takeable — this is what a PID file cannot do |
+| `TestStopSignalsTheProcessGroup` | a child started with `Setpgid` receives it |
+| `TestDetachRedirectsStdio` | the caller's stdout is untouched — the `0147e96` regression |
+
+### `internal/api` — skills (unit)
+
+| test | asserts |
+|---|---|
+| `TestSkillIsWrittenUnderTheSessionDirectory` | `<dir>/.claude/skills/<name>/SKILL.md` |
+| `TestSkillNameIsValidatedNotSanitised` | rows: `..`, `../x`, `a/b`, `A`, `-x` → all `400`; `my-skill` accepted |
+
+### `tests/` — end to end (integration)
+
+| test | asserts |
+|---|---|
+| `TestCreateQueryAnswerLifecycle` | a real `claude -p` answers a real HTTP request |
+| `TestClearActuallyForgetsTheCodeword` | seed a codeword, `/clear`, ask again — the measured trap, as a regression test |
+| `TestCancelledQueryLeavesAResumableSession` | kill mid-turn, resume, the session still works |

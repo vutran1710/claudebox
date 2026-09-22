@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -237,5 +238,35 @@ func TestHeadlessSessionFieldsRoundTrip(t *testing.T) {
 	if got.Kind != Headless || got.ClaudeSessionID != want.ClaudeSessionID ||
 		got.SystemPrompt != want.SystemPrompt || got.PermissionMode != want.PermissionMode || got.Turns != 3 {
 		t.Errorf("round trip lost fields: %+v", got)
+	}
+}
+
+// The database path goes into a URI, so characters with meaning there must
+// survive it. A directory named "...90#01" silently truncated the filename at
+// the '#' and resolved two databases to one file.
+func TestAPathWithURIMetacharactersOpensItsOwnDatabase(t *testing.T) {
+	base := t.TempDir()
+	for _, name := range []string{"plain", "has#hash", "has?question", "has space"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(base, name)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			s, err := Open(filepath.Join(dir, "s.db"))
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			defer s.Close()
+			if err := s.Put(Session{Name: "only-here", Dir: dir}); err != nil {
+				t.Fatal(err)
+			}
+			all, err := s.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(all) != 1 {
+				t.Fatalf("found %d sessions, want 1 — this database is shared with another path", len(all))
+			}
+		})
 	}
 }

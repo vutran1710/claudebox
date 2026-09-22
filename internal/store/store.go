@@ -13,6 +13,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -87,7 +88,15 @@ func Open(path string) (*Store, error) {
 	// it — the others still fail instantly on contention. busy_timeout makes a
 	// blocked writer wait instead of returning SQLITE_BUSY; WAL lets readers
 	// proceed during a write.
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	// Built through net/url rather than concatenated. The path goes into a
+	// URI, so a '#' in it would start a fragment and silently truncate the
+	// filename — two different databases resolving to the same file, which a
+	// test found by opening one under a directory named "...90#01".
+	dsn := (&url.URL{
+		Scheme:   "file",
+		Path:     path,
+		RawQuery: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)",
+	}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)

@@ -10,14 +10,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/vutran1710/claudebox/internal/store"
 	"github.com/vutran1710/claudebox/internal/tmux"
+	"github.com/vutran1710/claudebox/internal/workspace"
 )
 
 // App holds the dependencies the commands need. Injected so tests drive real
@@ -31,19 +29,8 @@ type App struct {
 	Timeout time.Duration // how long to wait for a Remote Control URL
 }
 
-// DefaultRoot is where projects live. /workspace on a box that has one,
-// otherwise ~/workspace — a laptop has no writable /workspace, and cbx must be
-// runnable there.
-func DefaultRoot() string {
-	if info, err := os.Stat("/workspace"); err == nil && info.IsDir() {
-		return "/workspace"
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "/workspace"
-	}
-	return filepath.Join(home, "workspace")
-}
+// DefaultRoot is where projects live.
+func DefaultRoot() string { return workspace.Root() }
 
 // New builds an App with the real dependencies.
 func New(st *store.Store) *App {
@@ -69,7 +56,7 @@ func (a *App) New(name, repo string) error {
 	}
 
 	dir := filepath.Join(a.Root, name)
-	if err := a.prepareDir(dir, repo); err != nil {
+	if err := workspace.Prepare(dir, repo); err != nil {
 		return err
 	}
 	if err := a.Tmux.Start(name, dir); err != nil {
@@ -102,59 +89,6 @@ func (a *App) New(name, repo string) error {
 	}
 	return nil
 }
-
-// prepareDir makes the project directory ready: cloned, existing, or new.
-func (a *App) prepareDir(dir, repo string) error {
-	if _, err := os.Stat(dir); err == nil {
-		if repo != "" {
-			// Refuse rather than clone over someone's work.
-			if entries, _ := os.ReadDir(dir); len(entries) > 0 {
-				return fmt.Errorf("%s already exists and is not empty — remove it or omit --repo", dir)
-			}
-		}
-		return nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
-	}
-	if repo == "" {
-		return nil
-	}
-	url, err := repoURL(repo)
-	if err != nil {
-		os.RemoveAll(dir)
-		return err
-	}
-	// exec.Command, not a shell string. Shell-quoting makes a value safe for
-	// the shell but not for argv: git reads a leading dash as an option, and
-	// `git clone --upload-pack=...` runs an arbitrary command. "--" ends
-	// option parsing, and going through exec directly means there is no shell
-	// to quote for in the first place.
-	out, err := exec.Command("git", "clone", "--", url, dir).CombinedOutput()
-	if err != nil {
-		os.RemoveAll(dir)
-		return fmt.Errorf("clone %s: %w: %s", repo, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// repoURL expands owner/repo shorthand and rejects anything git would read as
-// an option rather than a repository.
-func repoURL(repo string) (string, error) {
-	if strings.HasPrefix(repo, "-") {
-		return "", fmt.Errorf("invalid repo %q: leading dash would be read as a git option", repo)
-	}
-	if strings.Contains(repo, "://") || strings.HasPrefix(repo, "git@") {
-		return repo, nil
-	}
-	// Shorthand must look like owner/repo and nothing else.
-	if !shorthand.MatchString(repo) {
-		return "", fmt.Errorf("invalid repo %q: expected owner/repo or a full git URL", repo)
-	}
-	return "https://github.com/" + repo + ".git", nil
-}
-
-var shorthand = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
 
 // List prints every recorded session and whether it is running. Reconciling
 // the store against tmux is the point: a row can outlive its process.

@@ -507,3 +507,10 @@ func TestTheSessionsModelAndEffortReachTheQuery(t *testing.T) {
 		}
 	}
 }
+
+// recorderFor sends a request with no Authorization header.
+func recorderFor(h *harness, r *http.Request) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	h.Handler().ServeHTTP(w, r)
+	return w
+}

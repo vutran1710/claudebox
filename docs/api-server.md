@@ -85,7 +85,11 @@ Every endpoint except `/healthz` requires `Authorization: Bearer <key>`.
 
 ```
 GET    /healthz                          no auth → {status, version}
+GET    /openapi.yaml · /openapi.json     the API, describing itself
 POST   /auth/rotate                      → {api_key}; the old key dies immediately
+
+GET    /commands                         the slash-command allowlist
+PUT    /commands                         replace it (YAML or JSON)
 
 POST   /sessions                         {name, repo?, system_prompt?,
                                           permission_mode?, model?, effort?}
@@ -241,6 +245,31 @@ policy, not generated data cbx can rebuild — the opposite of `sessions.db`. Th
 shipped default is `commands.example.yaml` at the project root, embedded in the
 binary and uploaded by `cbx-setuptool` — never over an edited file, because the
 operator's policy outranks ours.
+
+The spec is also readable and replaceable over HTTP, so a box's policy can be
+managed without an ssh session. `PUT /commands` validates before writing — a
+spec that does not parse would take the command endpoint down with it, and the
+file already on disk is a working one. Comments do not survive a replacement,
+which is a reason to keep editing the file on the box when the reasoning
+matters.
+
+This does not widen what a caller can do. Anyone holding the key can already
+create a session and send it any prompt; the allowlist governs slash commands,
+which are the narrower power. It guards against a mistake, not an attacker.
+
+### The API describes itself
+
+`openapi.yaml` at the project root, embedded and served at `/openapi.yaml` and
+`/openapi.json`. Behind the key like everything else: once a box is exposed
+through a tunnel, an unauthenticated description would tell the internet
+exactly what is listening, and anyone entitled to call the API has a key
+already.
+
+Routes are declared in a table that both registers them and is checked against
+the document — in both directions, so a described endpoint that does not exist
+and an endpoint nobody described are each a failing test. A published
+description that has drifted from the server is worse than none, because it is
+believed.
 
 ### Why the spec has to be an allowlist
 

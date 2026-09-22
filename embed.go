@@ -14,3 +14,9 @@ import _ "embed"
 //
 //go:embed commands.example.yaml
 var CommandsExample []byte
+
+// OpenAPI describes the HTTP API. Served by `cbx serve` at /openapi.yaml and
+// /openapi.json, and checked against the server's route table by a test.
+//
+//go:embed openapi.yaml
+var OpenAPI []byte

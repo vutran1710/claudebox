@@ -1,0 +1,606 @@
+openapi: 3.1.0
+
+info:
+  title: ClaudeBox API
+  version: "1"
+  description: |
+    Drives headless Claude Code sessions on a box: create one, send it a
+    prompt, and get the answer back in a single response.
+
+    Sessions created here are **headless** — a conversation id driven by
+    `claude -p`. Interactive tmux sessions, the ones a phone reaches through
+    Remote Control, are listed but never driven from here: the phone and a
+    query writing to one transcript would interleave turns.
+
+    The server binds 127.0.0.1. Reaching it is a deliberate act — an ssh
+    port-forward, or a Cloudflare tunnel opened with
+    `cbx-setuptool api expose`.
+
+servers:
+  - url: http://127.0.0.1:8091
+    description: The box, over an ssh port-forward
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: health
+  - name: auth
+  - name: sessions
+  - name: queries
+  - name: jobs
+  - name: commands
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness
+      description: The only endpoint that needs no key. Says nothing about whether one is configured.
+      security: []
+      responses:
+        "200":
+          description: The server is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: "1.2.0" }
+
+  /openapi.yaml:
+    get:
+      tags: [health]
+      summary: This document, as YAML
+      responses:
+        "200":
+          description: The API description
+          content:
+            application/yaml:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /openapi.json:
+    get:
+      tags: [health]
+      summary: This document, as JSON
+      responses:
+        "200":
+          description: The API description
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/rotate:
+    post:
+      tags: [auth]
+      summary: Issue a new API key
+      description: |
+        Requires the current key and returns a new one. The old key stops
+        working on the next request — there is no grace period, because the
+        reason to rotate is usually that it should already have stopped
+        working.
+      responses:
+        "200":
+          description: The new key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_key: { type: string, example: cbx_live_9c2... }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /commands:
+    get:
+      tags: [commands]
+      summary: Read the slash-command allowlist
+      description: |
+        What `POST /sessions/{name}/command` will accept, and how each entry is
+        carried out. Read from the box's `commands.yaml` on every request.
+      responses:
+        "200":
+          description: The current allowlist
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandSpec" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [commands]
+      summary: Replace the allowlist
+      description: |
+        Body may be YAML or JSON. Validated before anything is written — a spec
+        that does not parse would take the command endpoint down, and the file
+        already on disk is a working one.
+
+        **Comments do not survive.** The shipped default carries its reasoning
+        in comments, so editing the file on the box keeps more than this does.
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema: { $ref: "#/components/schemas/CommandSpec" }
+          application/json:
+            schema: { $ref: "#/components/schemas/CommandSpec" }
+      responses:
+        "200":
+          description: Replaced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandSpec" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions:
+    post:
+      tags: [sessions]
+      summary: Create a headless session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSession" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A session of that name already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [sessions]
+      summary: List every session on the box
+      description: Both kinds, because "what is on this box" is one question. Interactive ones are read-only here.
+      responses:
+        "200":
+          description: The sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /sessions/{name}:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+    get:
+      tags: [sessions]
+      summary: Inspect a session
+      description: Readable whatever its kind. Resuming needs no state, so this is a plain read.
+      responses:
+        "200":
+          description: The session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [sessions]
+      summary: Forget a session and its history
+      description: |
+        Removes the record and the conversation transcript. **The project
+        directory survives** — the transcript is the session, the directory is
+        the work. A query in flight is cancelled rather than refused.
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Interactive" }
+
+  /sessions/{name}/query:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+    post:
+      tags: [queries]
+      summary: Send a prompt and get the answer
+      description: |
+        Answers within `respond_within` if it can, and hands back a job if it
+        cannot. **Both outcomes must be handled**: a client that only reads
+        `answer` breaks the first time a query runs long.
+
+        `respond_within` is a *response* deadline, not a cancellation one. The
+        query keeps running when it passes; the answer lands in the job.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Query" }
+      responses:
+        "200":
+          description: Answered inside the window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Answer" }
+        "202":
+          description: Still running — poll the job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Accepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Interactive session, or one already running a query
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Claude failed, or the command ran against another conversation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /sessions/{name}/command:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+    post:
+      tags: [queries]
+      summary: Run a declared slash command
+      description: |
+        Only commands named in the box's `commands.yaml` are accepted. This is
+        an allowlist because it has to be: in print mode Claude Code reports
+        success for a command that does not exist and for one that refuses to
+        run without a terminal, so there is no signal to gate on.
+
+        `/clear` is performed by cbx, not forwarded — forwarded it reports
+        success, forks a new conversation id, and leaves the transcript intact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Command" }
+      responses:
+        "200":
+          description: Ran, or performed natively
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Answer"
+                  - $ref: "#/components/schemas/Rotated"
+        "202":
+          description: Still running — poll the job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Accepted" }
+        "400":
+          description: Not an allowed command, or missing a required argument
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Interactive" }
+
+  /sessions/{name}/system-prompt:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+    put:
+      tags: [sessions]
+      summary: Set the session's appended system prompt
+      description: Appended to Claude's default, never replacing it, so the box's own CLAUDE.md still applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prompt: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Interactive" }
+
+  /sessions/{name}/skills/{skill}:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+      - name: skill
+        in: path
+        required: true
+        description: Lowercase letters, digits and dashes. Validated, never sanitised.
+        schema:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
+    put:
+      tags: [sessions]
+      summary: Add a skill to one session
+      description: Written to `<dir>/.claude/skills/<skill>/SKILL.md`, where Claude finds project-scoped skills. Confined to the session that asked, not installed box-wide.
+      requestBody:
+        required: true
+        content:
+          text/markdown:
+            schema: { type: string }
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill: { type: string }
+                  path: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Interactive" }
+
+  /jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [jobs]
+      summary: Read a query's outcome
+      description: |
+        Returns immediately by default. `respond_within` long-polls: it is a
+        query parameter here because GET has no body, and optional because
+        "tell me now" is the obvious default for a read.
+      parameters:
+        - name: respond_within
+          in: query
+          required: false
+          description: How long to wait for the job to finish. Seconds, or a duration like `60s`.
+          schema: { type: string, example: 60s }
+      responses:
+        "200":
+          description: The job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such job — it may have expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [jobs]
+      summary: Cancel a running query, or discard a finished one
+      description: |
+        Means "I am done with this" in both states. Cancelling costs the turn
+        in flight and nothing else: a killed `claude -p` leaves a transcript
+        that resumes cleanly.
+      responses:
+        "200":
+          description: Cancelled or discarded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { type: string }
+                  status: { type: string }
+                  deleted: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The key from `cbx api-key show`, compared in constant time.
+
+  parameters:
+    SessionName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+
+  responses:
+    Unauthorized:
+      description: Missing or wrong bearer key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: The request could not be acted on as written
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No session of that name
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Interactive:
+      description: The session is driven from Remote Control and is read-only here
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    CommandSpec:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Where the spec lives on the box. Read-only.
+        version: { type: integer }
+        commands:
+          type: array
+          items:
+            type: object
+            required: [name, effect]
+            properties:
+              name: { type: string, example: /model }
+              effect:
+                type: string
+                enum: [forward, rotate-session]
+                description: |
+                  `forward` runs it through `claude -p`. `rotate-session` is
+                  performed by cbx — `/clear` needs this, because forwarded it
+                  reports success and clears nothing.
+              requires_args:
+                type: boolean
+                description: Refuse the bare command. Bare `/model` only prints its usage.
+              description: { type: string }
+
+    Error:
+      type: object
+      description: Every message names what to do next — the caller is usually an agent with no way to ask.
+      properties:
+        error: { type: string }
+
+    CreateSession:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        repo:
+          type: string
+          description: "`owner/repo` or a full git URL. Cloned into the session's directory."
+        system_prompt:
+          type: string
+          description: Appended to Claude's default on every query.
+        permission_mode:
+          type: string
+          enum: [acceptEdits, auto, bypassPermissions, manual]
+          description: Fixed at creation. A caller that could raise its own permissions per query would make this meaningless.
+        model:
+          type: string
+          description: An alias (`opus`), a full name (`claude-fable-5`), or a variant (`opus[1m]`).
+          example: opus
+        effort:
+          type: string
+          enum: [low, medium, high, xhigh, max]
+
+    Session:
+      type: object
+      properties:
+        name: { type: string }
+        dir: { type: string }
+        kind:
+          type: string
+          enum: [headless, interactive]
+        status:
+          type: string
+          enum: [ready, running, stopped]
+          description: A headless session is a uuid between queries, so `ready` rather than `running`.
+        repo: { type: string }
+        rc_url:
+          type: string
+          description: Remote Control URL. Interactive sessions only.
+        session_id:
+          type: string
+          description: The Claude conversation this session resumes.
+        system_prompt: { type: string }
+        permission_mode: { type: string }
+        model: { type: string }
+        effort: { type: string }
+        turns:
+          type: integer
+          description: Turns that reached the model. At 0 the conversation does not exist yet.
+
+    Query:
+      type: object
+      required: [prompt, respond_within]
+      properties:
+        prompt: { type: string }
+        respond_within:
+          description: |
+            How long the server may take to respond. Required, with no default:
+            only the caller knows what it can hold open. Seconds as a number,
+            or a duration string. `0` returns a job id immediately. Maximum 15
+            minutes — above that the request is refused, not clamped.
+          oneOf:
+            - type: number
+            - type: string
+          example: 90s
+
+    Command:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          example: /model sonnet
+        respond_within:
+          description: Required for commands that forward to Claude; unused for ones cbx performs itself.
+          oneOf:
+            - type: number
+            - type: string
+
+    Answer:
+      type: object
+      properties:
+        job: { type: string }
+        status: { type: string, enum: [done] }
+        answer: { type: string }
+        session_id: { type: string }
+        turns: { type: integer }
+        duration_ms: { type: integer }
+
+    Rotated:
+      type: object
+      description: A command cbx performed itself, such as `/clear`.
+      properties:
+        command: { type: string }
+        effect: { type: string, enum: [rotate-session] }
+        session_id:
+          type: string
+          description: The new conversation id.
+
+    Accepted:
+      type: object
+      properties:
+        job: { type: string }
+        status: { type: string, enum: [running] }
+        poll:
+          type: string
+          description: Where to read the outcome.
+          example: /jobs/j_01H...
+
+    Job:
+      type: object
+      properties:
+        job: { type: string }
+        session: { type: string }
+        status:
+          type: string
+          enum: [running, done, failed, cancelled, interrupted]
+          description: |
+            `interrupted` means the server restarted underneath the query. It
+            is not `failed`: Claude did not fail, and a client should read it
+            differently.
+        answer: { type: string }
+        error: { type: string }
+        expires_at:
+          type: string
+          format: date-time
+          description: Finished jobs are kept an hour, then swept.

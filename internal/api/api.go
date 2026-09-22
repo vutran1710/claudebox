@@ -80,27 +80,61 @@ func New(st *store.Store, key string) *Server {
 	}
 }
 
+// route is one endpoint.
+//
+// Declared in a table rather than registered inline so the OpenAPI document
+// can be checked against it. A published description that has drifted from the
+// server is worse than none: it is believed.
+type route struct {
+	Pattern string
+	Handler http.HandlerFunc
+	// Public endpoints skip the bearer key. Only two do.
+	Public bool
+}
+
+func (s *Server) routes() []route {
+	return []route{
+		// A health check is for a load balancer, and one that needed a
+		// credential could not do its job.
+		{"GET /healthz", s.health, true},
+
+		{"GET /openapi.yaml", s.openAPIYAML, false},
+		{"GET /openapi.json", s.openAPIJSON, false},
+
+		{"POST /auth/rotate", s.rotateKey, false},
+
+		{"GET /commands", s.getCommands, false},
+		{"PUT /commands", s.putCommands, false},
+
+		{"POST /sessions", s.createSession, false},
+		{"GET /sessions", s.listSessions, false},
+		{"GET /sessions/{name}", s.getSession, false},
+		{"DELETE /sessions/{name}", s.deleteSession, false},
+
+		{"POST /sessions/{name}/query", s.query, false},
+		{"POST /sessions/{name}/command", s.command, false},
+		{"PUT /sessions/{name}/system-prompt", s.setSystemPrompt, false},
+		{"PUT /sessions/{name}/skills/{skill}", s.putSkill, false},
+
+		{"GET /jobs/{id}", s.getJob, false},
+		{"DELETE /jobs/{id}", s.deleteJob, false},
+	}
+}
+
 // Handler builds the routes.
 //
-// Everything but /healthz goes through authenticate. A route added outside
-// this function is a route with no key check, so they all live here.
+// Guarded endpoints go on their own mux behind authenticate, so an endpoint
+// cannot be added without a key check by forgetting to wrap it.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.health)
-
 	guarded := http.NewServeMux()
-	guarded.HandleFunc("POST /auth/rotate", s.rotateKey)
-	guarded.HandleFunc("POST /sessions", s.createSession)
-	guarded.HandleFunc("GET /sessions", s.listSessions)
-	guarded.HandleFunc("GET /sessions/{name}", s.getSession)
-	guarded.HandleFunc("DELETE /sessions/{name}", s.deleteSession)
-	guarded.HandleFunc("POST /sessions/{name}/query", s.query)
-	guarded.HandleFunc("POST /sessions/{name}/command", s.command)
-	guarded.HandleFunc("PUT /sessions/{name}/system-prompt", s.setSystemPrompt)
-	guarded.HandleFunc("PUT /sessions/{name}/skills/{skill}", s.putSkill)
-	guarded.HandleFunc("GET /jobs/{id}", s.getJob)
-	guarded.HandleFunc("DELETE /jobs/{id}", s.deleteJob)
-
+	for _, r := range s.routes() {
+		if r.Public {
+			mux.HandleFunc(r.Pattern, r.Handler)
+			continue
+		}
+		guarded.HandleFunc(r.Pattern, r.Handler)
+	}
 	mux.Handle("/", s.authenticate(guarded))
 	return mux
 }

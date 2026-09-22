@@ -195,61 +195,154 @@ func checkELF(path string) error {
 	return nil
 }
 
-// MigrateConfig copies the local Claude configuration a box needs.
+// MigrateOptions is what to copy, and from where.
+type MigrateOptions struct {
+	// Dir is the local configuration directory. Empty means ~/.claude.
+	// Not fixed, because a machine may keep more than one, and the one worth
+	// shipping to a box is not always the one Claude Code reads here.
+	Dir string
+	// Only names what to copy, relative to Dir. Empty means DefaultFilter.
+	Only []string
+}
+
+// DefaultFilter is what a box gets when nobody says otherwise.
 //
-// Only what shapes a session: skills, agents, settings, and the plugin
-// manifest. Not caches, not session transcripts, not the 300MB of plugin
-// bundles that the box re-fetches for itself.
-func MigrateConfig(t Target) ([]string, []Dropped, error) {
+// Not everything under the directory: caches, transcripts and plugin bundles
+// are either large or meaningless elsewhere. Plugins travel as their manifest,
+// a few kilobytes the box re-fetches from, rather than a few hundred megabytes.
+var DefaultFilter = []string{
+	"skills", "agents", "rules", "settings.json",
+	"plugins/installed_plugins.json", "plugins/known_marketplaces.json",
+}
+
+// Copied records what one filter entry actually sent. The count is here
+// because "copied agents" while sending nothing is the failure this whole file
+// exists to avoid — a step that reports success having done nothing.
+type Copied struct {
+	Path  string
+	Files int
+}
+
+// DefaultClaudeDir is where Claude Code keeps configuration on this machine.
+func DefaultClaudeDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
-	remoteHome, err := remoteHomeDir(t)
-	if err != nil {
-		return nil, nil, err
+	return filepath.Join(home, ".claude"), nil
+}
+
+// MigrateConfig copies local Claude configuration to a box.
+//
+// It copies whatever the filter names and the directory has. An earlier
+// version skipped symlinks, so a configuration directory whose entries link
+// into a dotfiles repository arrived empty and was reported as copied.
+// entry is one thing to copy, already resolved on disk.
+type entry struct {
+	Rel   string
+	Local string
+	IsDir bool
+}
+
+// Plan decides what would be copied, and why anything named was not.
+//
+// Pure, and run before anything touches the network: a filter entry that
+// escapes the directory or names something absent is answered immediately,
+// rather than after an ssh timeout against a box that was never the problem.
+func Plan(dir string, only []string) ([]entry, []Dropped, error) {
+	if dir == "" {
+		d, err := DefaultClaudeDir()
+		if err != nil {
+			return nil, nil, err
+		}
+		dir = d
 	}
-	if _, err := Run(t, "mkdir -p "+shq(remoteHome+"/.claude/plugins")); err != nil {
-		return nil, nil, err
+	if info, err := os.Stat(dir); err != nil {
+		return nil, nil, fmt.Errorf("read %s: %w", dir, err)
+	} else if !info.IsDir() {
+		return nil, nil, fmt.Errorf("%s is not a directory", dir)
+	}
+	if len(only) == 0 {
+		only = DefaultFilter
 	}
 
-	var copied []string
+	var plan []entry
 	var dropped []Dropped
-	for _, rel := range []string{
-		"skills", "agents", "settings.json",
-		"plugins/installed_plugins.json", "plugins/known_marketplaces.json",
-	} {
-		local := filepath.Join(home, ".claude", rel)
-		info, err := os.Stat(local)
+	for _, rel := range only {
+		rel = strings.TrimSpace(strings.Trim(rel, "/"))
+		if rel == "" {
+			continue
+		}
+		// The filter names what to copy inside the directory a caller pointed
+		// at, and nothing outside it.
+		if rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
+			dropped = append(dropped, Dropped{rel, "escapes the configuration directory"})
+			continue
+		}
+		local := filepath.Join(dir, rel)
+		info, err := os.Stat(local) // Stat, not Lstat: a symlinked entry is followed.
 		if os.IsNotExist(err) {
+			dropped = append(dropped, Dropped{rel, "not present in " + dir})
 			continue
 		}
 		if err != nil {
-			return copied, dropped, err
+			return nil, dropped, err
 		}
-		dest := remoteHome + "/.claude/" + rel
+		plan = append(plan, entry{Rel: rel, Local: local, IsDir: info.IsDir()})
+	}
+	return plan, dropped, nil
+}
+
+// MigrateConfig copies local Claude configuration to a box.
+func MigrateConfig(t Target, opts MigrateOptions) ([]Copied, []Dropped, error) {
+	plan, dropped, err := Plan(opts.Dir, opts.Only)
+	if err != nil {
+		return nil, dropped, err
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, dropped, err
+	}
+	remoteHome, err := remoteHomeDir(t)
+	if err != nil {
+		return nil, dropped, err
+	}
+	if _, err := Run(t, "mkdir -p "+shq(remoteHome+"/.claude/plugins")); err != nil {
+		return nil, dropped, err
+	}
+
+	var copied []Copied
+	for _, e := range plan {
+		dest := remoteHome + "/.claude/" + e.Rel
 
 		// settings.json cannot be copied verbatim: it names the operator's
 		// home directory and binaries the box does not have, and every hook it
 		// carries fires on every edit inside a session.
-		if rel == "settings.json" {
-			d, err := uploadPortableSettings(t, local, dest, home, remoteHome)
+		if filepath.Base(e.Rel) == "settings.json" {
+			d, err := uploadPortableSettings(t, e.Local, dest, home, remoteHome)
 			if err != nil {
 				return copied, dropped, err
 			}
 			dropped = append(dropped, d...)
-			copied = append(copied, rel)
+			copied = append(copied, Copied{e.Rel, 1})
 			continue
 		}
-
-		if info.IsDir() {
-			if err := uploadDir(t, local, dest); err != nil {
+		if e.IsDir {
+			n, err := uploadDir(t, e.Local, dest)
+			if err != nil {
 				return copied, dropped, err
 			}
-		} else if err := Upload(t, local, dest); err != nil {
+			copied = append(copied, Copied{e.Rel, n})
+			continue
+		}
+		if _, err := Run(t, "mkdir -p "+shq(filepath.ToSlash(filepath.Dir(dest)))); err != nil {
 			return copied, dropped, err
 		}
-		copied = append(copied, rel)
+		if err := Upload(t, e.Local, dest); err != nil {
+			return copied, dropped, err
+		}
+		copied = append(copied, Copied{e.Rel, 1})
 	}
 	return copied, dropped, nil
 }
@@ -292,18 +385,19 @@ func remoteHomeDir(t Target) (string, error) {
 	return h, nil
 }
 
-// uploadDir copies a directory, skipping anything that is not a regular file.
-// A symlink under skills/ would otherwise be dereferenced and ship the
-// contents of whatever it points at — skills come from marketplaces.
-func uploadDir(t Target, localDir, remoteDir string) error {
-	return filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+// uploadDir copies every file in a directory and reports how many went.
+//
+// os.Stat rather than the walk's own mode, so a symlinked file is copied as
+// the file it points at. Anything that is not a file after that — a directory
+// link, a socket, a broken link — is simply not copied.
+func uploadDir(t Target, localDir, remoteDir string) (int, error) {
+	var sent int
+	err := filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
 			return err
 		}
-		if info.IsDir() {
-			return nil
-		}
-		if !info.Mode().IsRegular() {
+		target, err := os.Stat(path)
+		if err != nil || !target.Mode().IsRegular() {
 			return nil
 		}
 		rel, err := filepath.Rel(localDir, path)
@@ -314,8 +408,13 @@ func uploadDir(t Target, localDir, remoteDir string) error {
 		if _, err := Run(t, "mkdir -p "+shq(filepath.ToSlash(filepath.Dir(dest)))); err != nil {
 			return err
 		}
-		return Upload(t, path, dest)
+		if err := Upload(t, path, dest); err != nil {
+			return err
+		}
+		sent++
+		return nil
 	})
+	return sent, err
 }
 
 func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

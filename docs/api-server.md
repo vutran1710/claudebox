@@ -313,22 +313,37 @@ ssh -L 8091:localhost:8091 root@<box>      # nothing to install
 cbx-setuptool api expose --host <box>      # Cloudflare tunnel, HTTPS terminated
 ```
 
-## How it runs
+## How it runs: a background service, supervised
 
-`cbx serve` runs in the **foreground**. `cbx-setuptool` installs a systemd unit
-that owns it.
+The API is a background service. It starts at boot, survives the logout of
+whoever started it, restarts if it dies, and is never attached to a terminal.
 
-No PID file, no `-d`, no self-daemonising. Commit `0147e96` — *"cbx serve -d
-detaches instead of borrowing the caller's stdio"* — was a bug in exactly that
-hand-rolled machinery, and systemd deletes the whole class while adding
-restart-on-failure, start-on-boot and journald logs for free.
+It gets all of that from a supervisor rather than from itself. `cbx serve` does
+not fork, does not write a PID file, and does not have a `-d` — it runs as a
+plain process and whatever supervises it puts it in the background:
+
+```
+droplet          systemd unit, Type=simple   ← cbx-setuptool installs it
+Railway/Docker   CMD ["cbx", "serve"]        ← PID 1 is the service
+ad hoc           systemd-run --unit=cbx-api cbx serve
+```
+
+`Type=simple` means "this process does not background itself", which is the
+supervisor's job to do and not the same thing as running in a terminal.
+
+Self-daemonising would be worse in every one of those rows. Commit `0147e96` —
+*"cbx serve -d detaches instead of borrowing the caller's stdio"* — was a bug
+in exactly that hand-rolled machinery, and it buys nothing a supervisor does not
+already do better: restart-on-failure, start-on-boot, log capture. In the
+container row it is actively wrong, because a PID 1 that forks and exits takes
+the container down with it.
 
 The unit sets `KillMode=control-group` so query children die with the service;
 the reasoning is under [Two things persistence forces](#two-things-persistence-forces).
 
-This is also the one place `cbx`'s contract bends. Its rule is that the exit
-code is the result; a server does not exit. Everything else holds: `cbx serve`
-reads no stdin, prompts for nothing, and prints one fact per line as it starts.
+This is the one place `cbx`'s contract bends. Its rule is that the exit code is
+the result; a server does not exit. Everything else holds: `cbx serve` reads no
+stdin, prompts for nothing, and prints one fact per line as it starts.
 
 ## Setup
 

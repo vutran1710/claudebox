@@ -318,25 +318,64 @@ cbx-setuptool api expose --host <box>      # Cloudflare tunnel, HTTPS terminated
 The API is a background service. It starts at boot, survives the logout of
 whoever started it, restarts if it dies, and is never attached to a terminal.
 
-It gets all of that from a supervisor rather than from itself. `cbx serve` does
-not fork, does not write a PID file, and does not have a `-d` — it runs as a
-plain process and whatever supervises it puts it in the background:
+`cbx serve` runs in the foreground by default and backgrounds itself with
+`--detach`. Which one is right depends on what, if anything, is supervising it:
 
 ```
 droplet          systemd unit, Type=simple   ← cbx-setuptool installs it
 Railway/Docker   CMD ["cbx", "serve"]        ← PID 1 is the service
-ad hoc           systemd-run --unit=cbx-api cbx serve
+ad hoc, no init  cbx serve --detach          ← nothing else is watching
 ```
 
 `Type=simple` means "this process does not background itself", which is the
-supervisor's job to do and not the same thing as running in a terminal.
+supervisor's job and not the same thing as running in a terminal. Where a
+supervisor exists it should be the one doing this, because it also gives
+restart-on-failure, start-on-boot and log capture, none of which `--detach` can.
 
-Self-daemonising would be worse in every one of those rows. Commit `0147e96` —
-*"cbx serve -d detaches instead of borrowing the caller's stdio"* — was a bug
-in exactly that hand-rolled machinery, and it buys nothing a supervisor does not
-already do better: restart-on-failure, start-on-boot, log capture. In the
-container row it is actively wrong, because a PID 1 that forks and exits takes
-the container down with it.
+**`--detach` must never be a container's `CMD`.** That is a constraint, not a
+preference: a PID 1 that forks and exits takes the container down with it, so
+the Railway row stays foreground permanently.
+
+### What `--detach` has to get right
+
+Commit `0147e96` — *"cbx serve -d detaches instead of borrowing the caller's
+stdio"* — is the prior art, and it is worth naming what it got wrong so this
+does not repeat it.
+
+**Re-exec, not fork.** Go cannot `fork()` safely; the runtime is multi-threaded
+and only the calling thread survives. The child is started with
+`exec.Command(os.Executable(), ...)` and `SysProcAttr{Setsid: true}`.
+
+**`Setsid` is the part that matters.** Without a new session the child keeps the
+caller's controlling terminal and dies of `SIGHUP` when the SSH connection
+closes — detached in appearance only, which is the worst version of this
+feature.
+
+**Stdio goes nowhere near the caller.** That was the literal 0147e96 bug: stdin
+from `/dev/null`, stdout and stderr to `~/.local/state/cbx/serve.log`. A daemon
+holding a terminal open keeps the SSH session from closing.
+
+**A lock file, not a PID file.** `~/.local/state/cbx/serve.lock` is held with
+`flock` for as long as the process lives, and the kernel releases it when the
+process dies however it died. "Is it running?" becomes "can I take the lock?",
+which a bare PID file cannot answer — a PID outlives its process and gets
+recycled, so a stale file reports a running server, or worse, `--stop` signals
+whatever unrelated process inherited the number. The PID is written inside the
+locked file for reporting; the lock is what is trusted.
+
+**`--stop` signals the process group, not the process.** Under systemd,
+`KillMode=control-group` kills query children with the service. Detached, there
+is no cgroup and that has to be done by hand: children are started with
+`Setpgid`, and `--stop` sends `SIGTERM` to the group, then `SIGKILL` after a
+grace period. Skipping this leaves orphaned `claude -p` processes writing to
+transcripts nothing is tracking — the failure already described under
+[Two things persistence forces](#two-things-persistence-forces).
+
+**Nothing restarts it.** This is the cost of the flag rather than a defect in
+it. A detached server that dies stays dead, and its `running` job rows stay
+`running` until someone starts it again and the boot sweep marks them
+`interrupted`. Under systemd that window is the length of a restart; detached
+it is the length of time before a human notices.
 
 The unit sets `KillMode=control-group` so query children die with the service;
 the reasoning is under [Two things persistence forces](#two-things-persistence-forces).
@@ -411,7 +450,8 @@ internal/api/       HTTP only — routes, bearer auth, handlers
   janitor.go        the sweep loop, started with the server, stopped with it
 internal/claude/    the claude -p seam — build argv, exec, parse the JSON result
 internal/store/     + kind, claude_session_id, system_prompt, turns; + jobs
-cmd/cbx/            + serve, + api-key show|rotate
+  detach.go         re-exec with Setsid, the flock, --stop's group signal
+cmd/cbx/            + serve [--detach|--stop], + api-key show|rotate
 internal/setuptool/ + the --with-api step, + api expose|rotate
 ```
 

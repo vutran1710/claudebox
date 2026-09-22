@@ -91,4 +91,5 @@ this project was found by running against a real box.
 ## Docs
 
 - [docs/two-binaries.md](docs/two-binaries.md) — why the split
+- [docs/api-server.md](docs/api-server.md) — the API server, and why it is not `cbx serve` returning
 - [docs/decision-log.md](docs/decision-log.md) — choices made, why, and what would make each wrong

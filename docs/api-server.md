@@ -88,8 +88,9 @@ GET    /sessions                         both kinds, reconciled against tmux
 GET    /sessions/{name}                  dir, kind, status, session_id, turns
 DELETE /sessions/{name}                  forget it
 
-POST   /sessions/{name}/query?timeout=   {prompt} → 200 answer | 202 job
-GET    /jobs/{id}?timeout=               poll, or long-poll, a query in flight
+POST   /sessions/{name}/query            {prompt, respond_within} → 200 | 202 job
+GET    /jobs/{id}?respond_within=        poll, or long-poll, a query in flight
+DELETE /jobs/{id}                        cancel a running query, or discard a result
 
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
@@ -104,84 +105,144 @@ connection to keep warm, and nothing to leak when a client disappears.
 
 `DELETE` forgets the record. It does **not** delete the project directory —
 `cbx kill` has always refused to delete someone's work, and an HTTP verb is not
-a reason to change that. There is no process to stop either: a headless session
-is a uuid between queries, not a running thing.
+a reason to change that.
 
-### Query: the caller sets how long it will wait
+Between queries there is no process to stop: a headless session is a uuid, not a
+running thing. During one there is, and `DELETE` cancels it before forgetting
+the session rather than refusing. That follows `cbx kill`, which succeeds on a
+session that is already gone because *the intent is that it be gone* — the same
+reading applies when the obstacle is a query still in flight.
+
+### Query: the caller says how long it will wait
 
 A query holds the connection until Claude finishes, and returns the answer:
 
 ```
-POST /sessions/api-work/query   {"prompt": "what changed in the store?"}
+POST /sessions/api-work/query
+{
+  "prompt": "what changed in the store?",
+  "respond_within": "90s"
+}
+
 200  {"answer": "...", "session_id": "...", "turns": 3, "duration_ms": 8200}
 ```
 
-How long the server holds it open is the **caller's** decision, not a threshold
-the server guessed:
+`respond_within` is **required, and has no default.** The server knows how long
+Claude usually takes; only the caller knows what *it* can hold open. A phone on
+a train, a Cloudflare tunnel and a cron job have three different answers, and
+any constant the server picked would be wrong for at least two of them — so it
+does not pick one. Omitting the field is `400`, not a guess.
 
-```
-POST /sessions/api-work/query?timeout=90
-```
+A bare integer is seconds; a Go duration string (`90s`, `5m`) works too, so
+`"5m"` does what it obviously means instead of failing to parse. It is in the
+body rather than the query string because it is part of what is being asked,
+alongside the prompt.
 
-Default `300` (five minutes). A bare integer is seconds; a Go duration string
-(`90s`, `5m`) is also accepted, so `timeout=5m` does what it obviously means
-instead of failing to parse.
-
-The server knows how long Claude usually takes; only the caller knows what *it*
-can hold open. A phone on a train, a Cloudflare tunnel and a cron job have three
-different answers, and a server-side constant is wrong for at least two of them.
-
-When the deadline passes, the caller gets a job id and polls:
+When the window closes, the caller gets a job id and polls:
 
 ```
 202  {"job": "j_01H...", "poll": "/jobs/j_01H..."}
 GET  /jobs/j_01H...   → {"status":"running"} … {"status":"done","answer":"..."}
 ```
 
-**`timeout` is a response deadline, not a cancellation deadline.** This is the
-one thing about the parameter that can be misread, and the misreading is
-expensive: the query does *not* stop when the deadline passes. Claude keeps
-working, the answer lands in the job, and it is waiting whenever the caller
-asks. Nothing is lost by choosing a short timeout — the only thing it changes
-is whether you are told now or told later.
+**The name is the contract: the server responds within that window.** Both
+outcomes honour it — the answer if it is ready, a job id if it is not. What the
+field does *not* do is stop the work, which is why it is not called `timeout`.
+Claude keeps going, the answer lands in the job, and it is waiting whenever the
+caller asks. Nothing is lost by naming a short window; it changes only whether
+you are told now or told later.
 
-`timeout=0` is therefore useful rather than degenerate: it returns `202`
-immediately without waiting at all, which is exactly what a fire-and-forget
-caller wants.
+`"0s"` is therefore useful rather than degenerate: it returns `202` at once
+without waiting, which is exactly what a fire-and-forget caller wants.
 
-The ceiling is `900` (fifteen minutes). Above it the request is refused with
-`400` naming the maximum, rather than silently clamped — a server that quietly
-does something other than what was asked is the failure this project keeps
-finding in other people's installers, and it should not ship one.
+The ceiling is fifteen minutes. Above it the request is refused with `400`
+naming the maximum, rather than silently clamped — a server that quietly does
+something other than what was asked is the failure this project keeps finding in
+other people's installers, and it should not ship one.
 
-The same parameter long-polls a job, so a caller that wants the answer the
-moment it exists does not have to spin:
+The same field long-polls a job, so a caller that wants the answer the moment it
+exists does not have to spin. Here it is a query parameter and it is optional,
+because `GET` has no body and "tell me the status now" is the obvious default
+for a read:
 
 ```
-GET /jobs/j_01H...?timeout=60     → waits up to 60s for it to finish
+GET /jobs/j_01H...?respond_within=60s    → waits up to 60s for it to finish
+GET /jobs/j_01H...                       → answers immediately
 ```
 
 **Implementation note, because this is where it will break:** the server's own
-`WriteTimeout` must exceed the maximum `timeout` it accepts, or the transport
-closes connections the parameter explicitly permitted. `ReadHeaderTimeout` stays
-short; it is what defends against a slow-header client, and it is unrelated to
-how long a handler may run.
+`WriteTimeout` must exceed the maximum `respond_within` it accepts, or the
+transport closes connections the field explicitly permitted. `ReadHeaderTimeout`
+stays short; it defends against a slow-header client and is unrelated to how
+long a handler may run.
 
-The cost of all this is real and worth stating plainly: **every client must
-handle both response shapes.** A client that only reads `answer` will break the
-first time a query outruns its own timeout.
+The cost is real and worth stating plainly: **every client must handle both
+response shapes.** One that only reads `answer` will break the first time a
+query outruns its own window.
 
-**Jobs are in-memory and do not survive a restart.** That is honest rather than
-lazy: a query is a child `claude -p` process, systemd restarting `cbx serve`
-kills that child, and the answer no longer exists to be recovered. Persisting
-the job row would only record that something was lost.
+### Jobs are rows, and a janitor sweeps them
+
+A job is a row with an `expires_at` set when it is created. A janitor goroutine
+lives with the server and sweeps every ten minutes.
+
+Expiry is **data, not a runtime timer**. A timer only exists inside the process
+that scheduled it, so a crash loses every pending deletion and leaves rows no
+one will ever collect. A date on a row survives the process that wrote it: the
+janitor converges the table from whatever state a crash left behind, without
+depending on traffic arriving to trigger a lazy sweep.
+
+`DELETE /jobs/{id}` is the manual path, and means the same thing in both states
+a job can be in — *I am done with this*:
+
+| job state | what `DELETE` does |
+|---|---|
+| running | `SIGTERM` the child, `SIGKILL` after a grace period, mark it cancelled |
+| finished | discard the result now rather than at `expires_at` |
+
+**The sweep only deletes finished rows.** A query legitimately still running
+past its own `expires_at` must keep its record; deleting it would pull the row
+out from under a client mid-flight.
+
+### Two things persistence forces
+
+**A restart must reconcile its own wreckage.** Job rows outlive the `claude -p`
+children that produce them. Without a startup sweep a client polling after a
+restart sees `status: running` for ever — a ghost, and a lie, since nothing is
+working on it:
+
+```sql
+UPDATE jobs SET status = 'interrupted' WHERE status = 'running';
+```
+
+This is strictly better than keeping jobs in memory, where a restart gave the
+client a bare `404` that could not distinguish "never existed" from "died in a
+restart". Here the client is told what happened.
+
+**Children must die with the server**, or the orphan keeps writing to a
+transcript nothing is tracking. Stated in the unit rather than assumed:
+
+```ini
+[Service]
+KillMode=control-group
+Restart=on-failure
+```
 
 ### Concurrency
 
 One query at a time per session; a second gets `409`. Two `--resume` processes
-on one conversation would append interleaved turns to the same transcript. The
-lock is an in-process mutex keyed by session name, which is sufficient because
-the API server is the only thing that issues queries.
+on one conversation would append interleaved turns to the same transcript.
+
+Because jobs are rows, the database enforces this rather than a mutex:
+
+```sql
+CREATE UNIQUE INDEX one_running_per_session
+  ON jobs(session_name) WHERE status = 'running';
+```
+
+An in-memory lock would be forgotten on restart — and combined with an orphaned
+child, that is exactly how a second `--resume` gets started on a conversation
+that is already being written to. The startup `UPDATE` above also clears this
+index, so no session stays wedged by a job that died with the last process.
 
 ### Skills and system prompts
 
@@ -262,6 +323,9 @@ detaches instead of borrowing the caller's stdio"* — was a bug in exactly that
 hand-rolled machinery, and systemd deletes the whole class while adding
 restart-on-failure, start-on-boot and journald logs for free.
 
+The unit sets `KillMode=control-group` so query children die with the service;
+the reasoning is under [Two things persistence forces](#two-things-persistence-forces).
+
 This is also the one place `cbx`'s contract bends. Its rule is that the exit
 code is the result; a server does not exit. Everything else holds: `cbx serve`
 reads no stdin, prompts for nothing, and prints one fact per line as it starts.
@@ -301,13 +365,37 @@ recorded before this feature was a tmux session.
 the first query passes `--session-id <uuid>` to create it; after that
 `--resume <uuid>` continues it.
 
+And a `jobs` table, in the same database for the same reason the sessions table
+is there — two writers, and a row that must outlive the process that made it:
+
+```sql
+CREATE TABLE IF NOT EXISTS jobs (
+  id           TEXT PRIMARY KEY,
+  session_name TEXT    NOT NULL,
+  status       TEXT    NOT NULL,      -- running | done | failed | cancelled | interrupted
+  prompt       TEXT    NOT NULL,
+  answer       TEXT    NOT NULL DEFAULT '',
+  error        TEXT    NOT NULL DEFAULT '',
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_running_per_session
+  ON jobs(session_name) WHERE status = 'running';
+```
+
+`interrupted` is its own status rather than `failed`: it says the server
+restarted underneath a query, which is a different thing from Claude failing and
+suggests a different response from the client.
+
 ## Packages
 
 ```
-internal/api/       HTTP only — routes, bearer auth, handlers, the job registry
+internal/api/       HTTP only — routes, bearer auth, handlers
   key.go            generate, load, verify, rotate: the key's one door
+  janitor.go        the sweep loop, started with the server, stopped with it
 internal/claude/    the claude -p seam — build argv, exec, parse the JSON result
-internal/store/     + kind, claude_session_id, system_prompt, turns
+internal/store/     + kind, claude_session_id, system_prompt, turns; + jobs
 cmd/cbx/            + serve, + api-key show|rotate
 internal/setuptool/ + the --with-api step, + api expose|rotate
 ```
@@ -332,12 +420,20 @@ tested with `httptest` against a fake session source.
 3. **What happens to a headless session's transcript on `DELETE`?** The row goes.
    Claude Code's own `.jsonl` stays on disk. That is probably right — it is the
    record of work — but nothing prunes it.
-4. **Job TTL.** Results sit in memory until read. `timeout=0` makes a
-   never-polling client easy to write by accident, so this needs an answer
-   before the parameter ships: expire a finished job after some interval, or
-   cap how many a session may accumulate.
-5. **Is there a way to actually cancel a query?** `timeout` deliberately does
-   not, and a runaway `claude -p` currently runs to completion holding the
-   session's lock. `DELETE /jobs/{id}` killing the child is the obvious
-   answer; it is not in this design because cancelling mid-turn leaves the
-   conversation in a state nothing has tested.
+4. **How long is a finished job kept?** The mechanism is settled — `expires_at`
+   on the row, swept every ten minutes — but the window is not. An hour is the
+   obvious starting point. A phone that polls the next morning wants longer, and
+   answers are stored in full, so the number is a storage decision as much as a
+   usability one.
+5. **What does a cancelled turn leave behind?** `DELETE` on a running job kills
+   `claude -p` mid-turn. Whether the transcript is left in a state `--resume`
+   can continue from is untested, and it is the one part of cancellation that
+   cannot be reasoned about from the flags. Needs an experiment before the
+   endpoint is trusted, not an assumption written down here.
+6. **Crash consistency between `turns` and the transcript.** If the first query
+   completes but the server dies before recording `turns = 1`, a restart reads
+   `0` and passes `--session-id` for a conversation that already exists.
+   Ordering the write earlier only moves the problem, so one direction needs a
+   fallback — probably attempting `--resume` and retrying with `--session-id`
+   when no conversation is found. Which way depends on how `--resume` actually
+   behaves against a missing id, which is worth testing rather than guessing.

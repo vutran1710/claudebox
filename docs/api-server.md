@@ -1,5 +1,9 @@
 # The API server
 
+<p align="center">
+  <img src="architecture.svg" width="960" alt="cbx-setuptool provisions the box from a laptop. On the box, the cbx CLI creates interactive tmux sessions reached from a phone by Remote Control, while cbx serve exposes an HTTP API driving headless claude -p sessions. Both record state in one SQLite database." />
+</p>
+
 ## Why this is not `cbx serve` coming back
 
 [two-binaries.md](two-binaries.md) deleted `cbx serve`, its API key and its

@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 920" width="1100" height="920" role="img" aria-label="ClaudeBox architecture: cbx-setuptool provisions the box from a laptop; on the box, the cbx CLI creates interactive tmux sessions reached from a phone by Remote Control, while cbx serve exposes an HTTP API that drives headless claude -p sessions; both record state in one SQLite database.">
+  <title>ClaudeBox architecture</title>
+
+  <style>
+    .t  { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .m  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a887f"/>
+    </marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="1100" height="920" fill="#fcfcfb"/>
+
+  <text class="t" x="40" y="46" font-size="23" font-weight="600" fill="#1c1b19">ClaudeBox</text>
+  <text class="t" x="40" y="70" font-size="13" fill="#75736c">two binaries, two kinds of session, one store — and where the API server fits</text>
+
+  <!-- ===================== top row ===================== -->
+  <rect x="40" y="96" width="260" height="116" rx="10" fill="#ffffff" stroke="#d8d6d0"/>
+  <text class="t" x="56" y="120" font-size="11" fill="#8a887f" letter-spacing=".06em">YOUR LAPTOP</text>
+  <text class="m" x="56" y="144" font-size="13" font-weight="600" fill="#1c1b19">cbx-setuptool</text>
+  <text class="m" x="56" y="166" font-size="11" fill="#75736c">setup · auth · migrate · status</text>
+  <text class="t" x="56" y="188" font-size="11" fill="#75736c">interactive — a person watches it,</text>
+  <text class="t" x="56" y="202" font-size="11" fill="#75736c">pastes tokens, does the Claude login</text>
+
+  <rect x="340" y="96" width="200" height="116" rx="10" fill="#f5f0ff" stroke="#7c3aed"/>
+  <text class="t" x="356" y="120" font-size="11" fill="#8a887f" letter-spacing=".06em">PHONE</text>
+  <text class="t" x="356" y="146" font-size="13" fill="#1c1b19">Claude app</text>
+  <text class="t" x="356" y="170" font-size="11" fill="#75736c">opens a Remote Control</text>
+  <text class="t" x="356" y="184" font-size="11" fill="#75736c">URL — a human, typing</text>
+
+  <rect x="620" y="96" width="440" height="116" rx="10" fill="#eff5ff" stroke="#2563eb"/>
+  <text class="t" x="636" y="120" font-size="11" fill="#8a887f" letter-spacing=".06em">API CLIENTS</text>
+  <text class="t" x="636" y="146" font-size="13" fill="#1c1b19">Claude Project · cron job · another agent</text>
+  <text class="t" x="636" y="170" font-size="11" fill="#75736c">no human present — needs an exit code and a parseable answer</text>
+  <text class="m" x="636" y="192" font-size="11" fill="#75736c">ssh -L 8091:localhost:8091   ·   or a Cloudflare tunnel</text>
+
+  <path d="M170,212 L170,254" stroke="#8a887f" fill="none" marker-end="url(#a)"/>
+  <text class="m" x="180" y="240" font-size="11" fill="#75736c">ssh · scp</text>
+
+  <path d="M440,212 L440,234 L550,234 L550,470 L528,470" stroke="#7c3aed" fill="none" marker-end="url(#ap)"/>
+  <path d="M840,212 L840,290" stroke="#2563eb" fill="none" marker-end="url(#ab)"/>
+
+  <!-- ===================== the box ===================== -->
+  <rect x="24" y="254" width="1052" height="626" rx="16" fill="none" stroke="#c9c7c0" stroke-dasharray="7 5"/>
+
+  <!-- binaries -->
+  <rect x="56" y="290" width="464" height="96" rx="10" fill="#ffffff" stroke="#d8d6d0"/>
+  <text class="m" x="72" y="316" font-size="13" font-weight="600" fill="#1c1b19">cbx</text>
+  <text class="t" x="104" y="316" font-size="11" fill="#75736c">— non-interactive CLI, driven by the master session</text>
+  <text class="m" x="72" y="342" font-size="12" fill="#1c1b19">new · ls · kill · resume · export</text>
+  <text class="t" x="72" y="366" font-size="11" fill="#75736c">never reads stdin · exit code is the result · one fact per line</text>
+
+  <rect x="580" y="290" width="476" height="96" rx="10" fill="#eff5ff" stroke="#2563eb"/>
+  <text class="m" x="596" y="316" font-size="13" font-weight="600" fill="#1c1b19">cbx serve</text>
+  <text class="t" x="672" y="316" font-size="11" fill="#2563eb">— the new part</text>
+  <text class="m" x="596" y="342" font-size="12" fill="#1c1b19">127.0.0.1:8091</text>
+  <text class="t" x="700" y="342" font-size="11" fill="#75736c">Bearer on everything but /healthz</text>
+  <text class="t" x="596" y="366" font-size="11" fill="#75736c">supervised: systemd · PID 1 in a container · or --detach</text>
+
+  <path d="M288,386 L288,424" stroke="#8a887f" fill="none" marker-end="url(#a)"/>
+  <path d="M818,386 L818,424" stroke="#8a887f" fill="none" marker-end="url(#a)"/>
+
+  <!-- sessions -->
+  <rect x="56" y="424" width="464" height="196" rx="10" fill="#f5f0ff" stroke="#7c3aed"/>
+  <text class="t" x="72" y="448" font-size="12" font-weight="600" fill="#7c3aed" letter-spacing=".02em">INTERACTIVE SESSION</text>
+  <text class="m" x="72" y="474" font-size="12" fill="#1c1b19">tmux + claude</text>
+  <text class="m" x="72" y="496" font-size="11" fill="#75736c">--dangerously-skip-permissions · IS_SANDBOX=1</text>
+  <text class="t" x="72" y="524" font-size="11" fill="#1c1b19">/remote-control → a URL the phone opens</text>
+  <text class="t" x="72" y="546" font-size="11" fill="#75736c">the pane is scraped once, at startup, to read that URL</text>
+  <rect x="72" y="562" width="432" height="42" rx="6" fill="#fdf0ef" stroke="#b3261e"/>
+  <text class="t" x="86" y="580" font-size="11" font-weight="600" fill="#b3261e">read-only through the API → 409</text>
+  <text class="t" x="86" y="596" font-size="11" fill="#75736c">the phone and a query would interleave turns</text>
+
+  <rect x="580" y="424" width="476" height="196" rx="10" fill="#eff5ff" stroke="#2563eb"/>
+  <text class="t" x="596" y="448" font-size="12" font-weight="600" fill="#2563eb" letter-spacing=".02em">HEADLESS SESSION</text>
+  <text class="m" x="596" y="474" font-size="12" fill="#1c1b19">claude -p --output-format json</text>
+  <text class="m" x="596" y="496" font-size="11" fill="#75736c">--resume &lt;uuid&gt; · --session-id when turns = 0</text>
+  <text class="t" x="596" y="524" font-size="11" fill="#1c1b19">no tmux, no pane, no scraping — the trust dialog is skipped</text>
+  <text class="m" x="596" y="546" font-size="11" fill="#1c1b19">respond_within → 200 { answer }  |  202 { job }</text>
+  <rect x="596" y="562" width="444" height="42" rx="6" fill="#fff7ec" stroke="#b45309"/>
+  <text class="m" x="610" y="580" font-size="11" font-weight="600" fill="#1c1b19">commands.yaml</text>
+  <text class="t" x="706" y="580" font-size="11" fill="#75736c">allowlist for /command</text>
+  <text class="m" x="610" y="596" font-size="11" fill="#75736c">/clear → rotate-session · others → forward</text>
+
+  <path d="M288,620 L288,652" stroke="#8a887f" fill="none" marker-end="url(#a)"/>
+  <path d="M818,620 L818,652" stroke="#8a887f" fill="none" marker-end="url(#a)"/>
+
+  <!-- store -->
+  <rect x="56" y="652" width="1000" height="96" rx="10" fill="#ecfaf7" stroke="#0d7a6f"/>
+  <text class="m" x="72" y="678" font-size="13" font-weight="600" fill="#0d7a6f">SQLite</text>
+  <text class="m" x="136" y="678" font-size="12" fill="#75736c">~/.local/state/cbx/sessions.db — one registry, because tmux forgets</text>
+  <text class="m" x="72" y="704" font-size="11" fill="#1c1b19">sessions</text>
+  <text class="m" x="150" y="704" font-size="11" fill="#75736c">name · kind · claude_session_id · system_prompt · permission_mode · turns</text>
+  <text class="m" x="72" y="728" font-size="11" fill="#1c1b19">jobs</text>
+  <text class="m" x="150" y="728" font-size="11" fill="#75736c">id · session · status · answer · expires_at</text>
+  <text class="t" x="520" y="728" font-size="11" fill="#0d7a6f">← janitor sweeps every 10′ · unique index allows one running query per session</text>
+
+  <!-- provisioned -->
+  <rect x="56" y="776" width="1000" height="80" rx="10" fill="#ffffff" stroke="#d8d6d0" stroke-dasharray="4 3"/>
+  <text class="t" x="72" y="800" font-size="11" fill="#8a887f" letter-spacing=".06em">PUT HERE ONCE BY cbx-setuptool</text>
+  <text class="m" x="72" y="824" font-size="11" fill="#75736c">node · gh · vercel · supabase · claude · tmux · git</text>
+  <text class="m" x="460" y="824" font-size="11" fill="#75736c">~/.claude/{skills, agents, settings.json}</text>
+  <text class="m" x="760" y="824" font-size="11" fill="#75736c">/workspace/&lt;name&gt;</text>
+  <text class="t" x="72" y="844" font-size="11" fill="#75736c">tokens piped over stdin, never argv</text>
+  <text class="t" x="460" y="844" font-size="11" fill="#75736c">home paths remapped, unportable hooks dropped</text>
+  <text class="t" x="760" y="844" font-size="11" fill="#75736c">cloned or created</text>
+
+  <text class="t" x="44" y="278" font-size="11" fill="#8a887f" letter-spacing=".06em">THE BOX — SINGLE TENANT, ROOT</text>
+</svg>

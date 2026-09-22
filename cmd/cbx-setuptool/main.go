@@ -40,7 +40,7 @@ is.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(setupCmd(), authCmd(), migrateCmd(), statusCmd())
+	root.AddCommand(setupCmd(), authCmd(), migrateCmd(), statusCmd(), apiCmd())
 	return root
 }
 
@@ -54,7 +54,7 @@ func target(host, user string) (setuptool.Target, error) {
 
 func setupCmd() *cobra.Command {
 	var host, user, binary string
-	var skipAuth, skipClaude bool
+	var skipAuth, skipClaude, withAPI bool
 
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -80,7 +80,7 @@ token path. Everything else can be answered from environment variables.`,
 			if err != nil {
 				return err
 			}
-			return runSetup(t, binary, skipAuth, skipClaude)
+			return runSetup(t, binary, skipAuth, skipClaude, withAPI)
 		},
 	}
 	cmd.Flags().StringVar(&host, "host", "", "IP or hostname of the box (required)")
@@ -88,6 +88,39 @@ token path. Everything else can be answered from environment variables.`,
 	cmd.Flags().StringVar(&binary, "binary", "", "Locally built linux cbx to install (GOOS=linux GOARCH=amd64)")
 	cmd.Flags().BoolVar(&skipAuth, "skip-auth", false, "Skip the CLI token prompts")
 	cmd.Flags().BoolVar(&skipClaude, "skip-claude-login", false, "Install everything but leave Claude Code signed out (sign in later with another setup run)")
+	cmd.Flags().BoolVar(&withAPI, "with-api", false, "Install and start the HTTP API as a systemd service")
+	return cmd
+}
+
+func apiCmd() *cobra.Command {
+	var host, user string
+	cmd := &cobra.Command{
+		Use:   "api <install|key|rotate|forward>",
+		Short: "Manage the HTTP API on the box",
+		Long: `Installs or operates the API server.
+
+  install   write the systemd unit, start it, print the key
+  key       print the key the box currently accepts
+  rotate    issue a new key and restart the server onto it
+  forward   print the ssh command that reaches the API from here
+
+The API binds 127.0.0.1. Over plain HTTP a public listener would put the
+bearer key and every prompt on the wire in cleartext, so reaching it is a
+deliberate act — forward prints the tunnel that does it without installing
+anything on the box.`,
+		Example: "  cbx-setuptool api install --host 203.0.113.9\n" +
+			"  cbx-setuptool api rotate --host 203.0.113.9",
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			t, err := target(host, user)
+			if err != nil {
+				return err
+			}
+			return runAPI(t, args[0])
+		},
+	}
+	cmd.Flags().StringVar(&host, "host", "", "IP or hostname of the box (required)")
+	cmd.Flags().StringVar(&user, "user", "root", "SSH user")
 	return cmd
 }
 

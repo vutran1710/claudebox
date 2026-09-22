@@ -29,7 +29,7 @@ func step(status, name, detail string) {
 	fmt.Printf("  %s %s\n", status, name)
 }
 
-func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude bool) error {
+func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude, withAPI bool) error {
 	fmt.Printf("\nProvisioning %s\n\n", t)
 
 	fmt.Println("Tools")
@@ -97,7 +97,66 @@ func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude bool) erro
 		return err
 	}
 
+	if withAPI {
+		fmt.Println("\nAPI")
+		if err := setuptool.UploadCommandSpec(t); err != nil {
+			step(cross, "commands.yaml", err.Error())
+			return err
+		}
+		step(tick, "commands.yaml", "~/.config/cbx/commands.yaml")
+		if err := setuptool.InstallAPI(t, setuptool.APIOptions{}); err != nil {
+			step(cross, "service", err.Error())
+			return err
+		}
+		step(tick, "service", "cbx-api, enabled and started")
+		key, err := setuptool.APIKey(t)
+		if err != nil {
+			step(cross, "key", err.Error())
+			return err
+		}
+		step(tick, "key", key)
+		fmt.Printf("\n  Reach it from here:\n\n    %s\n", setuptool.ForwardCommand(t, setuptool.DefaultAPIAddr))
+	}
+
 	fmt.Printf("\n%s ready. Start the master session:\n\n    ssh %s cbx new master\n\n", t, t)
+	return nil
+}
+
+// runAPI operates the API server on an already-provisioned box.
+func runAPI(t setuptool.Target, action string) error {
+	switch action {
+	case "install":
+		if err := setuptool.UploadCommandSpec(t); err != nil {
+			return err
+		}
+		if err := setuptool.InstallAPI(t, setuptool.APIOptions{}); err != nil {
+			return err
+		}
+		key, err := setuptool.APIKey(t)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("service\tcbx-api\n")
+		fmt.Printf("addr\thttp://%s\n", setuptool.DefaultAPIAddr)
+		fmt.Printf("key\t%s\n", key)
+		fmt.Printf("forward\t%s\n", setuptool.ForwardCommand(t, setuptool.DefaultAPIAddr))
+	case "key":
+		key, err := setuptool.APIKey(t)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("key\t%s\n", key)
+	case "rotate":
+		key, err := setuptool.RotateAPIKey(t)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("key\t%s\n", key)
+	case "forward":
+		fmt.Printf("forward\t%s\n", setuptool.ForwardCommand(t, setuptool.DefaultAPIAddr))
+	default:
+		return fmt.Errorf("unknown api command %q (install, key, rotate, forward)", action)
+	}
 	return nil
 }
 
@@ -162,6 +221,13 @@ func runStatus(t setuptool.Target) error {
 		} else {
 			step(cross, tool.Name, "not authenticated")
 		}
+	}
+
+	fmt.Println("\nAPI")
+	if setuptool.APIRunning(t) {
+		step(tick, "cbx-api", "running on "+setuptool.DefaultAPIAddr)
+	} else {
+		step(cross, "cbx-api", "not running — `cbx-setuptool api install`")
 	}
 	fmt.Println()
 	return nil

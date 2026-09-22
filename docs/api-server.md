@@ -97,7 +97,8 @@ POST   /sessions/{name}/query            {prompt, respond_within} → 200 | 202 
 GET    /jobs/{id}?respond_within=        poll, or long-poll, a query in flight
 DELETE /jobs/{id}                        cancel a running query, or discard a result
 
-POST   /sessions/{name}/command          {command} → runs a declared slash command
+POST   /sessions/{name}/command          {command, respond_within?} → declared
+                                          slash commands only
 
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
@@ -230,10 +231,16 @@ not always capable of the thing the command names:
 | `forward` | runs it through `claude -p --resume <uuid>` and returns the result |
 | `rotate-session` | cbx performs it natively; `/clear` is the case that needs this |
 
+`respond_within` is required when `effect` is `forward`, for the same reason a
+query needs it: the command runs through `claude -p` and may take a while. A
+`rotate-session` command never asks, because cbx performs it without running
+anything.
+
 It lives under `XDG_CONFIG_HOME`, not `XDG_STATE_HOME`. This is hand-edited
-policy, not generated data cbx can rebuild — the opposite of `sessions.db`. A
-default is embedded in the binary and written out when the file is absent, so a
-fresh box works before anyone edits anything.
+policy, not generated data cbx can rebuild — the opposite of `sessions.db`. The
+shipped default is `commands.example.yaml` at the project root, embedded in the
+binary and uploaded by `cbx-setuptool` — never over an edited file, because the
+operator's policy outranks ours.
 
 ### Why the spec has to be an allowlist
 
@@ -475,15 +482,32 @@ stdin, prompts for nothing, and prints one fact per line as it starts.
 
 ## Setup
 
-The API is opt-in, as requested:
+The API is opt-in:
 
 ```
 cbx-setuptool setup --host <ip> --binary ./cbx-linux --with-api
 ```
 
-The step generates a key on the box, installs and enables the unit, and prints
-the key and the URL once. `cbx-setuptool status` gains a line for whether the
-API is running and reachable.
+The step uploads the command spec, writes the systemd unit, enables and starts
+it, and prints the key. `cbx-setuptool status` gains a line for whether the
+service is running, and the API can be managed afterwards on its own:
+
+```
+cbx-setuptool api install --host <ip>    unit, spec and key in one go
+cbx-setuptool api key     --host <ip>    what the box currently accepts
+cbx-setuptool api rotate  --host <ip>    new key, and restart onto it
+cbx-setuptool api forward --host <ip>    the ssh tunnel that reaches it
+```
+
+Rotation restarts the service deliberately: a running server holds the key it
+started with, so rewriting the file alone would leave the old key working until
+something happened to restart it.
+
+**`api forward` prints an ssh tunnel rather than opening a Cloudflare one.**
+The design named a tunnel; an `ssh -N -L` needs nothing installed on the box
+and encrypts what a plain HTTP listener does not, so it ships first. A
+terminated-HTTPS tunnel is a follow-up, and would need `cloudflared` added to
+the install steps.
 
 It is a `Step` like every other, which means it carries a `Check` that is
 re-run after it — the rule earned by an installer that exited 0 having done

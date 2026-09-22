@@ -1,0 +1,25 @@
+[Unit]
+Description=cbx API server
+Documentation=https://github.com/vutran1710/claudebox/blob/main/docs/api-server.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cbx serve --addr {{.Addr}}
+Restart=on-failure
+RestartSec=5
+
+# Query children die with the service. Without this a restart orphans a
+# `claude -p` that keeps writing to a transcript nothing is tracking, while the
+# restarted server believes that session is free — and starts a second one on
+# the same conversation.
+KillMode=control-group
+TimeoutStopSec=20
+
+User={{.User}}
+Environment=HOME={{.Home}}
+Environment=PATH={{.Home}}/.local/bin:{{.Home}}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

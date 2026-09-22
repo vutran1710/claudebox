@@ -12,8 +12,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/vutran1710/claudebox/internal/api"
 	"github.com/vutran1710/claudebox/internal/cbx"
 	"github.com/vutran1710/claudebox/internal/store"
 )
@@ -43,7 +45,7 @@ cbx-setuptool's job.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newCmd(), lsCmd(), killCmd(), resumeCmd(), exportCmd())
+	root.AddCommand(newCmd(), lsCmd(), killCmd(), resumeCmd(), exportCmd(), serveCmd(), apiKeyCmd())
 	return root
 }
 
@@ -147,4 +149,99 @@ has and what it has been doing without anyone opening an SSH connection.`,
 			return withApp(func(a *cbx.App) error { return a.Export(args[0]) })
 		},
 	}
+}
+
+func serveCmd() *cobra.Command {
+	var addr string
+	var detach, stop bool
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Run the HTTP API",
+		Long: `Runs the API that drives headless Claude sessions: create one, send it a
+prompt, and get the answer back in a single response.
+
+Binds 127.0.0.1 by default. Over plain HTTP a public listener would put the
+bearer key and every prompt on the wire in cleartext, so reaching this from
+elsewhere is a deliberate act — an ssh port-forward, or a tunnel.
+
+Runs in the foreground so a supervisor can own it: a systemd unit on a box,
+PID 1 in a container. --detach is for a machine with neither, and gives up
+restart-on-failure and start-on-boot in exchange. Never use it as a
+container's CMD; a PID 1 that forks and exits takes the container with it.`,
+		Example: "  cbx serve\n  cbx serve --detach\n  cbx serve --stop",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			switch {
+			case stop:
+				if err := api.StopDetached(api.DefaultLockPath(), 5*time.Second); err != nil {
+					return err
+				}
+				fmt.Println("stopped\tok")
+				return nil
+			case detach:
+				if _, running := api.RunningPID(api.DefaultLockPath()); running {
+					return api.ErrAlreadyRunning
+				}
+				pid, err := api.Detach([]string{"serve", "--addr", addr}, api.DefaultLogPath())
+				if err != nil {
+					return err
+				}
+				fmt.Printf("pid\t%d\n", pid)
+				fmt.Printf("addr\thttp://%s\n", addr)
+				fmt.Printf("log\t%s\n", api.DefaultLogPath())
+				return nil
+			}
+			return withApp(func(a *cbx.App) error {
+				key, err := api.LoadOrCreateKey(api.DefaultKeyPath())
+				if err != nil {
+					return err
+				}
+				srv := api.New(a.Store, key)
+				srv.Version = version
+				return srv.Serve(cmd.Context(), api.Options{Addr: addr, Out: os.Stdout})
+			})
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", api.DefaultAddr, "Address to bind")
+	cmd.Flags().BoolVar(&detach, "detach", false, "Run in the background (prefer a supervisor where there is one)")
+	cmd.Flags().BoolVar(&stop, "stop", false, "Stop a detached server and its query children")
+	return cmd
+}
+
+func apiKeyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "api-key <show|rotate>",
+		Short: "Show or replace the API key",
+		Long: `Prints the key the API accepts, or issues a new one.
+
+Rotation takes effect immediately: the old key stops working on the next
+request, because the reason to rotate is usually that it should already have
+stopped working.`,
+		Example: "  cbx api-key show\n  cbx api-key rotate",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			switch args[0] {
+			case "show":
+				key, err := api.LoadOrCreateKey(api.DefaultKeyPath())
+				if err != nil {
+					return err
+				}
+				fmt.Printf("key\t%s\n", key)
+			case "rotate":
+				key, err := api.RotateKey(api.DefaultKeyPath())
+				if err != nil {
+					return err
+				}
+				fmt.Printf("key\t%s\n", key)
+				if _, running := api.RunningPID(api.DefaultLockPath()); running {
+					fmt.Fprintln(os.Stderr, "warning: a server is running with the old key — restart it, or rotate through POST /auth/rotate instead")
+				}
+			default:
+				return fmt.Errorf("unknown api-key command %q (show, rotate)", args[0])
+			}
+			return nil
+		},
+	}
+	return cmd
 }

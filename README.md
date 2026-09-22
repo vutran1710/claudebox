@@ -9,6 +9,10 @@ Your own Claude Code agent, always on, reachable from your phone.
 A box in the cloud runs Claude Code sessions you can open from the Claude app —
 no laptop required, nothing to keep awake.
 
+<p align="center">
+  <img src="docs/architecture.svg" width="960" alt="cbx-setuptool provisions the box from a laptop. On the box, the cbx CLI creates interactive tmux sessions reached from a phone by Remote Control, while cbx serve exposes an HTTP API driving headless claude -p sessions. Both record state in one SQLite database." />
+</p>
+
 ## Two commands
 
 ClaudeBox is two binaries because it does two unrelated jobs.

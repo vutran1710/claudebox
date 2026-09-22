@@ -1,0 +1,44 @@
+# Which slash commands the API will run, and how.
+#
+# This is an allowlist: a command that is not named here is refused. That is
+# not caution, it is the only option available. In print mode Claude Code
+# reports is_error: false for every command — including one that does not
+# exist, and one that refuses to run without a terminal — so there is no
+# programmatic signal to gate on and the gate has to be a written list.
+#
+#   effect: forward          run it through `claude -p` and return the result
+#   effect: rotate-session   cbx performs it natively
+#   requires_args: true      refuse the bare command
+#
+# Measured against Claude Code 2.1.236. Re-read on every request, so an edit
+# takes effect without restarting the server.
+
+version: 1
+
+commands:
+  - name: /clear
+    effect: rotate-session
+    description: Start a fresh conversation, discarding history
+    # Never `forward`. Forwarded, /clear reports success, silently forks a new
+    # session id, and leaves the transcript intact — verified by seeding a
+    # codeword, clearing, and being told the codeword again. cbx allocates a
+    # new conversation id instead, which actually forgets.
+
+  - name: /model
+    effect: forward
+    requires_args: true
+    description: Set the model for this session
+    # Bare `/model` only prints its usage and the list of available models,
+    # which reads as success while changing nothing.
+
+  - name: /compact
+    effect: forward
+    description: Compact the conversation history
+
+  - name: /context
+    effect: forward
+    description: Report what is currently in the context window
+
+  - name: /cost
+    effect: forward
+    description: Report token usage and cost for this session

@@ -46,6 +46,10 @@ type Session struct {
 	// than per query: a caller that could raise its own permissions per
 	// request would make the setting meaningless.
 	PermissionMode string
+	// Model and Effort are fixed at creation for the same reason as
+	// PermissionMode: Claude Code treats both as properties of a session.
+	Model  string
+	Effort string
 	// Turns selects the flag. At 0 the conversation does not exist yet and the
 	// first query must create it with --session-id.
 	Turns int
@@ -143,14 +147,16 @@ func (s *Store) Put(sess Session) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT INTO sessions (name, dir, repo, rc_url, created_at,
-		   kind, claude_session_id, system_prompt, permission_mode, turns)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)
+		   kind, claude_session_id, system_prompt, permission_mode, model, effort, turns)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT(name) DO UPDATE SET dir=excluded.dir, repo=excluded.repo,
 		   rc_url=excluded.rc_url, created_at=excluded.created_at, kind=excluded.kind,
 		   claude_session_id=excluded.claude_session_id, system_prompt=excluded.system_prompt,
-		   permission_mode=excluded.permission_mode, turns=excluded.turns`,
+		   permission_mode=excluded.permission_mode, model=excluded.model,
+		   effort=excluded.effort, turns=excluded.turns`,
 		sess.Name, sess.Dir, sess.Repo, sess.RCURL, created.Unix(),
-		kind, sess.ClaudeSessionID, sess.SystemPrompt, sess.PermissionMode, sess.Turns)
+		kind, sess.ClaudeSessionID, sess.SystemPrompt, sess.PermissionMode,
+		sess.Model, sess.Effort, sess.Turns)
 	if err != nil {
 		return fmt.Errorf("record session %q: %w", sess.Name, err)
 	}
@@ -163,8 +169,9 @@ func (s *Store) Get(name string) (*Session, error) {
 	var sess Session
 	var created int64
 	err := s.db.QueryRow(
-		`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, turns FROM sessions WHERE name = ?`, name).
-		Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode, &sess.Turns)
+		`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, turns FROM sessions WHERE name = ?`, name).
+		Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode,
+			&sess.Model, &sess.Effort, &sess.Turns)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -177,7 +184,7 @@ func (s *Store) Get(name string) (*Session, error) {
 
 // List returns every recorded session, oldest first.
 func (s *Store) List() ([]Session, error) {
-	rows, err := s.db.Query(`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, turns FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, turns FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -187,7 +194,8 @@ func (s *Store) List() ([]Session, error) {
 	for rows.Next() {
 		var sess Session
 		var created int64
-		if err := rows.Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode, &sess.Turns); err != nil {
+		if err := rows.Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode,
+			&sess.Model, &sess.Effort, &sess.Turns); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.CreatedAt = time.Unix(created, 0)

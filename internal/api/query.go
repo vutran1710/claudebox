@@ -96,6 +96,8 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		SessionID:      sess.ClaudeSessionID,
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
+		Model:          sess.Model,
+		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Prompt)
 }
@@ -156,6 +158,8 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		SessionID:      sess.ClaudeSessionID,
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
+		Model:          sess.Model,
+		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Command)
 }

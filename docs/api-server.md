@@ -88,7 +88,7 @@ GET    /healthz                          no auth → {status, version}
 POST   /auth/rotate                      → {api_key}; the old key dies immediately
 
 POST   /sessions                         {name, repo?, system_prompt?,
-                                          permission_mode?} → headless
+                                          permission_mode?, model?, effort?}
 GET    /sessions                         both kinds, reconciled against tmux
 GET    /sessions/{name}                  dir, kind, status, session_id, turns
 DELETE /sessions/{name}                  forget it
@@ -523,6 +523,8 @@ kind              TEXT    NOT NULL DEFAULT 'interactive'
 claude_session_id TEXT    NOT NULL DEFAULT ''
 system_prompt     TEXT    NOT NULL DEFAULT ''
 permission_mode   TEXT    NOT NULL DEFAULT ''
+model             TEXT    NOT NULL DEFAULT ''
+effort            TEXT    NOT NULL DEFAULT ''
 turns             INTEGER NOT NULL DEFAULT 0
 ```
 
@@ -536,6 +538,19 @@ same deliberate way — a query has nobody to answer a prompt either.
 Accepted values are Claude Code's own: `acceptEdits`, `auto`,
 `bypassPermissions`, `manual`. Anything else is `400` at session creation
 rather than a flag rejected later by a child process nobody is watching.
+
+`model` and `effort` are fixed at creation for the same reason, because Claude
+Code describes both as belonging to a session. `effort` is a closed set —
+`low`, `medium`, `high`, `xhigh`, `max` — and validated against it. `model` is
+not: aliases, full names and context variants (`opus`, `claude-fable-5`,
+`opus[1m]`) are an open set that a hardcoded list would fall behind, so its
+*shape* is validated instead.
+
+The shape check is not cosmetic. `--model` takes its value before the `--`
+that ends option parsing, so a name beginning with a dash reaches Claude as
+another flag. That is the same distinction that produced a command injection
+through `git clone` earlier in this project, and it is now guarded in a third
+place.
 
 Existing rows default to `interactive`, which is correct: every session
 recorded before this feature was a tmux session.

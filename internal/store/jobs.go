@@ -49,6 +49,8 @@ func migrate(db *sql.DB) error {
 		`claude_session_id TEXT NOT NULL DEFAULT ''`,
 		`system_prompt TEXT NOT NULL DEFAULT ''`,
 		`permission_mode TEXT NOT NULL DEFAULT ''`,
+		`model TEXT NOT NULL DEFAULT ''`,
+		`effort TEXT NOT NULL DEFAULT ''`,
 		`turns INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN ` + col); err != nil &&

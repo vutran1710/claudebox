@@ -447,3 +447,63 @@ func TestSkillNameIsValidatedNotSanitised(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateStoresModelAndEffort(t *testing.T) {
+	h := answering(t, answers("s", "hi"))
+	h.do("POST", "/sessions", map[string]any{
+		"name": "me", "model": "opus[1m]", "effort": claude.XHigh,
+	})
+	got, _ := h.Store.Get("me")
+	if got == nil || got.Model != "opus[1m]" || got.Effort != claude.XHigh {
+		t.Fatalf("stored = %+v", got)
+	}
+}
+
+func TestCreateRejectsABadEffort(t *testing.T) {
+	h := answering(t, answers("s", "hi"))
+	cases := []struct {
+		effort string
+		want   int
+	}{
+		{claude.Low, http.StatusCreated}, {claude.Max, http.StatusCreated},
+		{"", http.StatusCreated}, {"extreme", http.StatusBadRequest},
+	}
+	for i, c := range cases {
+		w := h.do("POST", "/sessions", map[string]any{
+			"name": fmt.Sprintf("ef%d", i), "effort": c.effort,
+		})
+		if w.Code != c.want {
+			t.Errorf("effort %q: code = %d, want %d (%s)", c.effort, w.Code, c.want, w.Body)
+		}
+	}
+}
+
+func TestCreateRejectsAModelThatWouldBeReadAsAFlag(t *testing.T) {
+	h := answering(t, answers("s", "hi"))
+	for i, bad := range []string{"--dangerously-skip-permissions", "-p", "opus --effort max"} {
+		w := h.do("POST", "/sessions", map[string]any{
+			"name": fmt.Sprintf("md%d", i), "model": bad,
+		})
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("model %q: code = %d, want 400", bad, w.Code)
+		}
+	}
+}
+
+func TestTheSessionsModelAndEffortReachTheQuery(t *testing.T) {
+	var seen string
+	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		seen = strings.Join(args, " ")
+		return []byte(result("uuid-m", "ok", 1)), nil
+	})
+	sess := h.headlessSession("mq", "uuid-m", 1)
+	sess.Model, sess.Effort = "sonnet", claude.High
+	h.Store.Put(sess)
+
+	h.do("POST", "/sessions/mq/query", map[string]any{"prompt": "hi", "respond_within": "10s"})
+	for _, want := range []string{"--model sonnet", "--effort high"} {
+		if !strings.Contains(seen, want) {
+			t.Errorf("argv %q missing %q — the session's choice did not reach Claude", seen, want)
+		}
+	}
+}

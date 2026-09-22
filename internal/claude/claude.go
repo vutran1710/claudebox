@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +42,38 @@ const (
 // The box is single-tenant and owned by whoever ran cbx.
 const DefaultPermissionMode = BypassPermissions
 
+// Effort levels Claude Code accepts.
+const (
+	Low    = "low"
+	Medium = "medium"
+	High   = "high"
+	XHigh  = "xhigh"
+	Max    = "max"
+)
+
+// ValidEffort reports whether a level is one Claude Code accepts. A closed
+// set, so a typo is refused at session creation rather than by a child
+// process nobody is watching.
+func ValidEffort(e string) bool {
+	switch e {
+	case "", Low, Medium, High, XHigh, Max:
+		return true
+	}
+	return false
+}
+
+// model names are an open set — aliases like "opus", full names like
+// "claude-fable-5", and context variants like "opus[1m]" — so this validates
+// the shape rather than a list that would go stale with every release.
+//
+// The leading character matters most: --model takes its value before the "--"
+// that ends option parsing, so a value beginning with a dash would be read as
+// another flag. Third time this distinction has come up in this project.
+var modelName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,63}$`)
+
+// ValidModel reports whether a model name is safe to pass as an argument.
+func ValidModel(m string) bool { return m == "" || modelName.MatchString(m) }
+
 // ValidPermissionMode reports whether a mode is one Claude Code accepts.
 func ValidPermissionMode(m string) bool {
 	switch m {
@@ -58,6 +91,9 @@ type Request struct {
 	SystemPrompt string
 	// PermissionMode is empty for DefaultPermissionMode.
 	PermissionMode string
+	// Model and Effort are empty for whatever the box is configured to use.
+	Model  string
+	Effort string
 	// Fresh creates the conversation rather than resuming it. True for the
 	// first turn, and again when a resume finds no conversation to continue.
 	Fresh bool
@@ -90,6 +126,12 @@ func Args(r Request) []string {
 		mode = DefaultPermissionMode
 	}
 	args = append(args, "--permission-mode", mode)
+	if r.Model != "" {
+		args = append(args, "--model", r.Model)
+	}
+	if r.Effort != "" {
+		args = append(args, "--effort", r.Effort)
+	}
 	if r.SystemPrompt != "" {
 		// Append, never replace: the box's own CLAUDE.md still applies.
 		args = append(args, "--append-system-prompt", r.SystemPrompt)

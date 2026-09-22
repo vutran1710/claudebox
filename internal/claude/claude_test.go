@@ -233,3 +233,59 @@ func TestTranscriptPathMatchesClaudesLayout(t *testing.T) {
 		t.Errorf("path %q is not under the projects directory", got)
 	}
 }
+
+func TestModelAndEffortArePassedThrough(t *testing.T) {
+	got := argsOf(t, Request{SessionID: "a", Prompt: "hi", Model: "opus", Effort: XHigh})
+	for _, want := range []string{"--model opus", "--effort xhigh"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("args %q missing %q", got, want)
+		}
+	}
+}
+
+func TestModelAndEffortAreOmittedWhenEmpty(t *testing.T) {
+	got := argsOf(t, Request{SessionID: "a", Prompt: "hi"})
+	for _, unwanted := range []string{"--model", "--effort"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("args %q pass an empty %s", got, unwanted)
+		}
+	}
+}
+
+func TestValidEffort(t *testing.T) {
+	for _, ok := range []string{"", Low, Medium, High, XHigh, Max} {
+		if !ValidEffort(ok) {
+			t.Errorf("%q rejected", ok)
+		}
+	}
+	for _, bad := range []string{"extreme", "XHIGH", "1", "high "} {
+		if ValidEffort(bad) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+func TestValidModelAcceptsAliasesNamesAndVariants(t *testing.T) {
+	for _, ok := range []string{"", "opus", "sonnet", "claude-fable-5", "opus[1m]", "sonnet[1m]"} {
+		if !ValidModel(ok) {
+			t.Errorf("%q rejected", ok)
+		}
+	}
+}
+
+// --model takes its value before the "--" that ends option parsing, so a name
+// beginning with a dash would be read as another flag. The third time this
+// distinction has bitten in this project.
+func TestValidModelRejectsWhatClaudeWouldReadAsAFlag(t *testing.T) {
+	for _, bad := range []string{
+		"--dangerously-skip-permissions",
+		"-p",
+		"opus --effort max",
+		"opus;rm -rf /",
+		"opus\nsonnet",
+	} {
+		if ValidModel(bad) {
+			t.Errorf("%q accepted — it would reach claude as an argument", bad)
+		}
+	}
+}

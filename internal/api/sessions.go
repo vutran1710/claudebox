@@ -24,6 +24,8 @@ type sessionView struct {
 	SessionID      string `json:"session_id,omitempty"`
 	SystemPrompt   string `json:"system_prompt,omitempty"`
 	PermissionMode string `json:"permission_mode,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Effort         string `json:"effort,omitempty"`
 	Turns          int    `json:"turns"`
 }
 
@@ -39,7 +41,8 @@ func view(s store.Session, running bool) sessionView {
 	return sessionView{
 		Name: s.Name, Dir: s.Dir, Kind: s.Kind, Status: status, Repo: s.Repo, RCURL: s.RCURL,
 		SessionID: s.ClaudeSessionID, SystemPrompt: s.SystemPrompt,
-		PermissionMode: s.PermissionMode, Turns: s.Turns,
+		PermissionMode: s.PermissionMode, Model: s.Model, Effort: s.Effort,
+		Turns: s.Turns,
 	}
 }
 
@@ -48,6 +51,8 @@ type createSessionRequest struct {
 	Repo           string `json:"repo"`
 	SystemPrompt   string `json:"system_prompt"`
 	PermissionMode string `json:"permission_mode"`
+	Model          string `json:"model"`
+	Effort         string `json:"effort"`
 }
 
 var sessionName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -69,6 +74,19 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 			req.PermissionMode, claude.AcceptEdits, claude.Auto, claude.BypassPermissions, claude.Manual))
 		return
 	}
+	if !claude.ValidEffort(req.Effort) {
+		fail(w, http.StatusBadRequest, fmt.Sprintf(
+			"effort %q is not one of %s, %s, %s, %s, %s",
+			req.Effort, claude.Low, claude.Medium, claude.High, claude.XHigh, claude.Max))
+		return
+	}
+	// --model takes its value before the "--" that ends option parsing, so a
+	// name beginning with a dash would be read as another flag.
+	if !claude.ValidModel(req.Model) {
+		fail(w, http.StatusBadRequest, fmt.Sprintf(
+			"model %q is not a usable model name — an alias like \"opus\", a full name like \"claude-fable-5\", or a variant like \"opus[1m]\"", req.Model))
+		return
+	}
 	if existing, err := s.Store.Get(req.Name); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -88,6 +106,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		ClaudeSessionID: uuid.NewString(),
 		SystemPrompt:    req.SystemPrompt,
 		PermissionMode:  req.PermissionMode,
+		Model:           req.Model,
+		Effort:          req.Effort,
 	}
 	if err := s.Store.Put(sess); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())

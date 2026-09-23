@@ -224,6 +224,9 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	if sess.ClaudeSessionID != "" && s.Home != "" {
 		os.Remove(claude.TranscriptPath(s.Home, sess.Dir, sess.ClaudeSessionID))
 	}
+	// The register goes with the session, so a name reused later does not
+	// inherit what the last one could hand back.
+	s.Store.DeleteArtifacts(name)
 	if err := s.Store.Delete(name); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return

@@ -50,6 +50,10 @@ func (rw *respondWithin) UnmarshalJSON(b []byte) error {
 
 type queryRequest struct {
 	Prompt string `json:"prompt"`
+	// Artifacts are the files this query is expected to produce. Only these
+	// become fetchable; everything else in the session directory stays
+	// private, which is the whole point of declaring them.
+	Artifacts []string `json:"artifacts"`
 	// A pointer so an omitted field is distinguishable from zero. Zero is
 	// meaningful: it asks for a job id immediately.
 	RespondWithin *respondWithin `json:"respond_within"`
@@ -90,6 +94,11 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	declared, err := declaredPaths(sess.Dir, req.Artifacts)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		Prompt:         req.Prompt,
@@ -99,11 +108,12 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		Model:          sess.Model,
 		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
-	}, wait, req.Prompt)
+	}, wait, req.Prompt, declared)
 }
 
 type commandRequest struct {
 	Command       string         `json:"command"`
+	Artifacts     []string       `json:"artifacts"`
 	RespondWithin *respondWithin `json:"respond_within"`
 }
 
@@ -152,6 +162,11 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	declared, err := declaredPaths(sess.Dir, req.Artifacts)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		Prompt:         req.Command,
@@ -161,7 +176,21 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		Model:          sess.Model,
 		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
-	}, wait, req.Command)
+	}, wait, req.Command, declared)
+}
+
+// declaredPaths validates what a caller says a turn will produce, before the
+// turn runs. A typo should cost a round trip, not a report.
+func declaredPaths(dir string, declared []string) ([]string, error) {
+	out := make([]string, 0, len(declared))
+	for _, rel := range declared {
+		clean, err := declaredArtifact(dir, rel)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, clean)
+	}
+	return out, nil
 }
 
 // outcome is what a turn came to. One decision, used for both the job row and
@@ -177,7 +206,7 @@ type outcome struct {
 }
 
 // run starts a turn and answers within the caller's window, or hands back a job.
-func (s *Server) run(w http.ResponseWriter, sess *store.Session, req claude.Request, wait time.Duration, prompt string) {
+func (s *Server) run(w http.ResponseWriter, sess *store.Session, req claude.Request, wait time.Duration, prompt string, declared []string) {
 	id := s.newID()
 	now := s.now()
 	err := s.Store.CreateJob(store.Job{
@@ -210,7 +239,7 @@ func (s *Server) run(w http.ResponseWriter, sess *store.Session, req claude.Requ
 			// Cancelled. deleteJob already recorded why.
 			return
 		}
-		done <- s.finish(sess, req, id, res, err)
+		done <- s.finish(sess, req, id, res, err, declared)
 	}()
 
 	timer := time.NewTimer(wait)
@@ -237,7 +266,7 @@ func (s *Server) run(w http.ResponseWriter, sess *store.Session, req claude.Requ
 
 // finish records how a turn ended and reports it, so the row and the response
 // can never disagree.
-func (s *Server) finish(sess *store.Session, req claude.Request, id string, res *claude.Result, err error) outcome {
+func (s *Server) finish(sess *store.Session, req claude.Request, id string, res *claude.Result, err error, declared []string) outcome {
 	if err != nil {
 		o := outcome{status: store.Failed, errMsg: err.Error()}
 		s.Store.FinishJob(id, o.status, "", o.errMsg)
@@ -265,6 +294,8 @@ func (s *Server) finish(sess *store.Session, req claude.Request, id string, res 
 			s.Store.Put(*fresh)
 		}
 	}
+	// Only now, and only what was declared and actually exists.
+	s.register(sess, id, declared)
 	s.Store.FinishJob(id, store.Done, res.Answer, "")
 	return outcome{
 		status: store.Done, answer: res.Answer,

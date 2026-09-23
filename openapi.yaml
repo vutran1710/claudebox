@@ -30,7 +30,7 @@ tags:
   - name: queries
   - name: jobs
   - name: commands
-  - name: files
+  - name: artifacts
 
 paths:
   /healthz:
@@ -353,75 +353,64 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Interactive" }
 
-  /sessions/{name}/files:
+  /sessions/{name}/artifacts:
     parameters:
       - $ref: "#/components/parameters/SessionName"
     get:
-      tags: [files]
-      summary: List what the session produced
+      tags: [artifacts]
+      summary: What this session may hand back
       description: |
-        Every regular file under the session's working directory. Machinery is
-        skipped — `.git`, `node_modules`, `.claude`, `vendor`, `target` and
-        similar — because they are output of a build, not of the session.
-
-        Readable on an interactive session too: the read-only rule is about
-        writing, and nothing here competes with the phone for a turn.
+        Only files declared on a query and actually produced by it. The session
+        directory holds a cloned repository, scratch files and whatever else a
+        turn wrote — none of which a caller may fetch.
       responses:
         "200":
-          description: The files
+          description: The register
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  dir: { type: string }
-                  files:
+                  artifacts:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        path: { type: string, example: report.html }
-                        size: { type: integer }
-                        modified: { type: string, format: date-time }
-                  truncated:
-                    type: string
-                    description: Present when there were more files than the listing cap. Said out loud rather than silently cut.
+                    items: { $ref: "#/components/schemas/Artifact" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /sessions/{name}/files/{path}:
+  /sessions/{name}/artifacts/{path}:
     parameters:
       - $ref: "#/components/parameters/SessionName"
       - name: path
         in: path
         required: true
-        description: Path relative to the session's directory. May contain slashes.
+        description: The declared path. May contain slashes.
         schema: { type: string }
-        example: out/2026/q3-report.html
+        example: report.html
     get:
-      tags: [files]
-      summary: Fetch one file
+      tags: [artifacts]
+      summary: Fetch one artifact
       description: |
         Returns the bytes, with a content type from the extension and a
         filename in Content-Disposition.
 
-        The path is checked by resolving it, not by inspecting the string: a
-        path can escape a directory without containing `..` — a symlink inside
-        the session pointing elsewhere reads as an ordinary relative path
-        until it is resolved.
+        A path that was never declared, has expired, or is no longer on disk
+        all answer `404` alike: a caller learns what it may fetch from the
+        register, not by probing the filesystem.
+
+        Containment is re-checked on every fetch, so a symlink planted after
+        registration cannot turn a registered path into a way out.
       responses:
         "200":
-          description: The file
+          description: The artifact
           content:
             "*/*":
               schema: { type: string, format: binary }
-        "400":
-          description: A directory, or a path that escapes the session
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Not a fetchable artifact of this session
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
         "413":
           description: Larger than the fetch limit — use ssh for that one
           content:
@@ -652,11 +641,41 @@ components:
         priming:
           $ref: "#/components/schemas/Priming"
 
+    Artifact:
+      type: object
+      properties:
+        path: { type: string, example: report.html }
+        job:
+          type: string
+          description: The turn that produced it.
+        size: { type: integer }
+        sha256:
+          type: string
+          description: So a caller can confirm what it fetched is what was produced.
+        created_at: { type: string, format: date-time }
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            Four hours after registration by default. The register expires,
+            not the file — deleting what a session wrote on a timer would
+            contradict DELETE keeping the working directory.
+
     Query:
       type: object
       required: [prompt, respond_within]
       properties:
         prompt: { type: string }
+        artifacts:
+          type: array
+          description: |
+            Files this query is expected to produce. Only these become
+            fetchable; everything else in the session directory stays private.
+            Declared paths are validated before the turn runs, so a typo costs
+            a round trip rather than a report. One that is never written is
+            simply not registered.
+          items: { type: string }
+          example: [report.html]
         respond_within:
           description: |
             How long the server may take to respond. Required, with no default:
@@ -675,6 +694,9 @@ components:
         command:
           type: string
           example: /model sonnet
+        artifacts:
+          type: array
+          items: { type: string }
         respond_within:
           description: Required for commands that forward to Claude; unused for ones cbx performs itself.
           oneOf:

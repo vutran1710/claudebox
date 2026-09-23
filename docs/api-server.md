@@ -108,8 +108,8 @@ POST   /sessions/{name}/command          {command, respond_within?} → declared
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
 
-GET    /sessions/{name}/files            what the session produced
-GET    /sessions/{name}/files/{path}     fetch one of them
+GET    /sessions/{name}/artifacts        what it may hand back
+GET    /sessions/{name}/artifacts/{path} fetch one
 ```
 
 ### Opening an existing session needs no state
@@ -353,28 +353,40 @@ Two things the spec still cannot catch, so the server checks them anyway:
 
 ### Getting work back out
 
-A session writes its output into its own directory — a report, a rendered
-page, a diff. The API could put files in and never take any out, which made it
-useless for anything whose result is a file rather than an answer.
+A session writes its output into its own directory, and a caller needs to
+fetch it. What a caller must not get is everything else in there — a cloned
+repository, scratch files, a stray `.env`, whatever a turn happened to write.
+
+So the fetchable set is **declared, not discovered**. A query names the files
+it expects to produce; when it finishes, those that exist are registered and
+become fetchable. Nothing else ever is.
 
 ```
-GET /sessions/report-42/files              → report.html, data/summary.md
-GET /sessions/report-42/files/report.html  → the bytes
+POST /sessions/x/query   { prompt, respond_within, artifacts: ["report.html"] }
+GET  /sessions/x/artifacts                → the register
+GET  /sessions/x/artifacts/report.html    → the bytes
 ```
 
-Machinery is skipped when listing — `.git`, `node_modules`, `.claude`,
-`vendor`, `target` — because they are a build's output, not the session's. A
-listing past the cap says so rather than being silently cut.
+This is the same deny-by-default the command allowlist uses, for the same
+reason: the alternative is a boundary that holds only while everyone behaves.
+Confining reads to the session directory is not enough when the directory is a
+cloned repository.
 
-Both are readable on an interactive session. "Interactive sessions are
-read-only through the API" is a rule about writing, and nothing here competes
-with the phone for a turn.
+Declared paths are validated **before** the turn runs, so a typo costs a round
+trip rather than a report. A declared file the turn never wrote is simply not
+registered — absent from the listing rather than a fetch that fails.
 
-**The path is checked by resolving it, not by inspecting the string.** A path
-can escape a directory without containing `..`: a symlink inside the session
-pointing at `/etc/passwd` reads as an ordinary relative name right up until it
-is resolved. Resolution happens first, containment is checked after, and the
-test tries the symlink as well as the obvious traversals.
+Registrations expire after four hours. **The register expires, not the file:**
+deleting what a session wrote on a timer would contradict `DELETE` keeping the
+working directory, and the data is still reachable over ssh.
+
+Never declared, expired, and no longer on disk all answer `404` alike. A
+caller learns what it may fetch from the register, not by probing the
+filesystem.
+
+Containment is checked twice — once when a path is declared, and again on
+every fetch, because a symlink planted after registration would otherwise turn
+a registered path into a way out.
 
 ### Jobs are rows, and a janitor sweeps them
 

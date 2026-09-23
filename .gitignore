@@ -10,3 +10,8 @@ tmp/
 /cbx
 /cbx-next
 /cbx-setuptool
+
+# python client
+__pycache__/
+*.pyc
+.venv/

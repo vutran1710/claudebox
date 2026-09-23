@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vutran1710/claudebox/internal/claude"
@@ -27,6 +28,8 @@ type sessionView struct {
 	Model          string `json:"model,omitempty"`
 	Effort         string `json:"effort,omitempty"`
 	Turns          int    `json:"turns"`
+	// Priming is present only when a session was created with skills.
+	Priming *primingView `json:"priming,omitempty"`
 }
 
 func view(s store.Session, running bool) sessionView {
@@ -53,6 +56,10 @@ type createSessionRequest struct {
 	PermissionMode string `json:"permission_mode"`
 	Model          string `json:"model"`
 	Effort         string `json:"effort"`
+	// Skills are invoked as turns once the session exists, in the order
+	// given. Each costs a real turn, so respond_within is required with them.
+	Skills        []string       `json:"skills"`
+	RespondWithin *respondWithin `json:"respond_within"`
 }
 
 var sessionName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -87,6 +94,24 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 			"model %q is not a usable model name — an alias like \"opus\", a full name like \"claude-fable-5\", or a variant like \"opus[1m]\"", req.Model))
 		return
 	}
+	for _, name := range req.Skills {
+		if !ValidSkillRef(name) {
+			fail(w, http.StatusBadRequest, fmt.Sprintf(
+				"skill %q is not a usable name — lowercase letters, digits, dashes, and a colon for a plugin skill", name))
+			return
+		}
+	}
+	// Priming runs turns, so it needs the same deadline a query does. Without
+	// skills there is nothing slow to wait for and the field is not asked for.
+	var wait time.Duration
+	if len(req.Skills) > 0 {
+		w2, err := window(req.RespondWithin)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		wait = w2
+	}
 	if existing, err := s.Store.Get(req.Name); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
@@ -113,7 +138,12 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, view(sess, false))
+	created := view(sess, false)
+	if len(req.Skills) > 0 {
+		p := s.prime(&sess, req.Skills, wait)
+		created.Priming = &p
+	}
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func (s *Server) listSessions(w http.ResponseWriter, _ *http.Request) {

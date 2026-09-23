@@ -499,6 +499,44 @@ components:
         effort:
           type: string
           enum: [low, medium, high, xhigh, max]
+        skills:
+          type: array
+          description: |
+            Skills to invoke once the session exists, in order. Each is run as
+            `/name` — a turn of its own, costing real time — so
+            `respond_within` is required alongside them.
+
+            Priming stops at the first skill Claude does not recognise. A
+            session primed with half of what was asked for is worse than one
+            that says which half failed.
+          items:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9:_-]{0,63}$"
+          example: [inline, testing]
+        respond_within:
+          description: Required when `skills` is present, unused otherwise. Same meaning as on a query.
+          oneOf:
+            - type: number
+            - type: string
+
+    Priming:
+      type: object
+      description: Present only when a session was created with skills.
+      properties:
+        job: { type: string }
+        status:
+          type: string
+          enum: [done, running, failed, cancelled]
+        invoked:
+          type: array
+          description: The skills that ran, in order. Short of what was asked for when one failed.
+          items: { type: string }
+        error:
+          type: string
+          description: Why priming stopped — most often a skill that is not installed on the box.
+        poll:
+          type: string
+          description: Present when priming outran the window.
 
     Session:
       type: object
@@ -526,6 +564,8 @@ components:
         turns:
           type: integer
           description: Turns that reached the model. At 0 the conversation does not exist yet.
+        priming:
+          $ref: "#/components/schemas/Priming"
 
     Query:
       type: object

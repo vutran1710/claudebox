@@ -231,3 +231,41 @@ func TestCancelledQueryLeavesAResumableSession(t *testing.T) {
 		t.Errorf("answer = %v", after["answer"])
 	}
 }
+
+// Priming a session with a skill that does not exist must not look like
+// success. Measured against Claude Code 2.1.236: an unknown slash command
+// answers "Unknown command: ..." with is_error false and turns 0, so nothing
+// about the exit code distinguishes it from a skill that ran.
+func TestPrimingWithAnUnknownSkillIsReported(t *testing.T) {
+	ts, st, root := liveAPI(t)
+	name := "e2e-unknown-skill"
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, got := call(t, ts, "POST", "/sessions", map[string]any{
+		"name": name, "skills": []string{"definitely-not-a-real-skill"}, "respond_within": "2m",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("code = %d: %v", code, got)
+	}
+	t.Cleanup(func() {
+		if sess, _ := st.Get(name); sess != nil {
+			if home, err := os.UserHomeDir(); err == nil {
+				os.Remove(claude.TranscriptPath(home, sess.Dir, sess.ClaudeSessionID))
+			}
+		}
+	})
+
+	priming, _ := got["priming"].(map[string]any)
+	if priming == nil {
+		t.Fatalf("no priming in the response: %v", got)
+	}
+	if priming["status"] != store.Failed {
+		t.Fatalf("priming status = %v, want failed — the skill does not exist", priming["status"])
+	}
+	if !strings.Contains(fmt.Sprint(priming["error"]), "not installed") {
+		t.Errorf("error does not say what happened: %v", priming["error"])
+	}
+}

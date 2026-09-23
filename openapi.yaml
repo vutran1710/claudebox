@@ -657,9 +657,11 @@ components:
           type: string
           format: date-time
           description: |
-            Four hours after registration by default. The register expires,
-            not the file — deleting what a session wrote on a timer would
-            contradict DELETE keeping the working directory.
+            Four hours after registration by default. The registration *and*
+            the file both go: a declared output has a stated lifetime, and
+            honouring it only in the register would leave the data on disk for
+            ever while merely making it unfetchable. Nothing else in the
+            session's directory is touched.
 
     Query:
       type: object

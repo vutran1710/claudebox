@@ -27,11 +27,17 @@ import (
 // the same deny-by-default the command allowlist uses and for the same reason:
 // the alternative is a boundary that only holds while everyone behaves.
 
-// DefaultArtifactTTL is how long a declared output stays fetchable.
+// DefaultArtifactTTL is how long a declared output lives.
 //
-// The register expires, not the file. Deleting what a session wrote on a timer
-// would contradict DELETE keeping the working directory, and the data is still
-// reachable over ssh.
+// Both the registration and the file it names. Expiring only the register
+// would leave every report a session ever produced on disk for ever, merely
+// unfetchable — which is not a retention policy, and customer data is exactly
+// what these files hold.
+//
+// This does not contradict DELETE keeping the working directory. DELETE
+// removes a session, and the directory is the work; an artifact is a declared
+// output with a stated lifetime, and deleting it at expiry is what the
+// lifetime promised.
 const DefaultArtifactTTL = 4 * time.Hour
 
 // maxArtifactBytes caps a single fetch, so one request cannot exhaust the box.
@@ -166,6 +172,32 @@ func (s *Server) register(sess *store.Session, jobID string, declared []string) 
 			CreatedAt:   now,
 			ExpiresAt:   now.Add(s.artifactTTL()),
 		})
+	}
+}
+
+// sweepArtifacts drops expired registrations and the files they named.
+//
+// Only ever files that were registered as outputs, and only after resolving
+// them inside their session again — the register says what may go, and
+// containment says it is still somewhere this may touch. Anything else in the
+// directory is left alone; it was never an artifact.
+func (s *Server) sweepArtifacts() {
+	expired, err := s.Store.SweepArtifacts()
+	if err != nil {
+		return
+	}
+	for _, a := range expired {
+		sess, err := s.Store.Get(a.SessionName)
+		if err != nil || sess == nil {
+			// The session is gone, and DELETE already took its directory's
+			// register with it. Nothing here to unlink.
+			continue
+		}
+		full, err := resolveInside(sess.Dir, a.Path)
+		if err != nil {
+			continue
+		}
+		os.Remove(full)
 	}
 }
 

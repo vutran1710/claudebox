@@ -198,11 +198,76 @@ func TestArtifactsExpire(t *testing.T) {
 	if list, _ := got["artifacts"].([]any); len(list) != 0 {
 		t.Errorf("an expired artifact was still listed: %v", list)
 	}
-	// The file itself stays: DELETE keeps the working directory, and a timer
-	// must not contradict that.
-	if n, err := h.Store.SweepArtifacts(); err != nil || n != 1 {
-		t.Errorf("sweep removed %d rows (%v), want 1", n, err)
+	expired, err := h.Store.SweepArtifacts()
+	if err != nil || len(expired) != 1 {
+		t.Errorf("sweep removed %d rows (%v), want 1", len(expired), err)
 	}
+}
+
+// Expiry has to mean the file as well. Expiring only the register would leave
+// every report a session ever produced on disk for ever, merely unfetchable —
+// and these files hold customer data.
+func TestTheJanitorDeletesExpiredArtifactFiles(t *testing.T) {
+	h, sess := produced(t, "swept", map[string]string{"report.html": "confidential"})
+	clock := time.Now()
+	h.now = func() time.Time { return clock }
+	h.Store.WithClock(func() time.Time { return clock })
+	h.ArtifactTTL = time.Hour
+
+	h.do("POST", "/sessions/swept/query", map[string]any{
+		"prompt": "go", "respond_within": "30s", "artifacts": []string{"report.html"},
+	})
+	onDisk := filepath.Join(sess.Dir, "report.html")
+	if _, err := os.Stat(onDisk); err != nil {
+		t.Fatalf("the artifact was never written: %v", err)
+	}
+
+	clock = clock.Add(2 * time.Hour)
+	h.sweepArtifacts()
+
+	if _, err := os.Stat(onDisk); !os.IsNotExist(err) {
+		t.Error("an expired artifact is still on disk — the TTL only hid it")
+	}
+}
+
+// Only ever files that were registered. Everything else in the directory was
+// never an artifact and the janitor has no business touching it.
+func TestTheJanitorLeavesEverythingElseAlone(t *testing.T) {
+	h, sess := produced(t, "spared", map[string]string{"report.html": "declared"})
+	clock := time.Now()
+	h.now = func() time.Time { return clock }
+	h.Store.WithClock(func() time.Time { return clock })
+	h.ArtifactTTL = time.Hour
+
+	os.WriteFile(filepath.Join(sess.Dir, "notes.md"), []byte("someone's work"), 0o644)
+	os.MkdirAll(filepath.Join(sess.Dir, "src"), 0o755)
+	os.WriteFile(filepath.Join(sess.Dir, "src", "main.go"), []byte("package main"), 0o644)
+
+	h.do("POST", "/sessions/spared/query", map[string]any{
+		"prompt": "go", "respond_within": "30s", "artifacts": []string{"report.html"},
+	})
+	clock = clock.Add(2 * time.Hour)
+	h.sweepArtifacts()
+
+	for _, kept := range []string{"notes.md", "src/main.go"} {
+		if _, err := os.Stat(filepath.Join(sess.Dir, kept)); err != nil {
+			t.Errorf("the janitor deleted %s, which was never an artifact", kept)
+		}
+	}
+	if _, err := os.Stat(sess.Dir); err != nil {
+		t.Error("the janitor removed the working directory")
+	}
+}
+
+// A session deleted before its artifacts expire takes its register with it, so
+// the sweep has nothing to unlink and must not go looking.
+func TestSweepingAfterTheSessionIsGoneIsHarmless(t *testing.T) {
+	h, _ := produced(t, "vanished", map[string]string{"report.html": "ok"})
+	h.do("POST", "/sessions/vanished/query", map[string]any{
+		"prompt": "go", "respond_within": "30s", "artifacts": []string{"report.html"},
+	})
+	h.do("DELETE", "/sessions/vanished", nil)
+	h.sweepArtifacts() // must not panic or error
 }
 
 func TestTheDefaultTTLIsFourHours(t *testing.T) {

@@ -182,7 +182,7 @@ func (s *Server) Janitor(ctx context.Context, interval time.Duration) {
 			return
 		case <-t.C:
 			s.Store.Sweep()
-			s.Store.SweepArtifacts()
+			s.sweepArtifacts()
 		}
 	}
 }

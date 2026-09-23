@@ -376,9 +376,17 @@ Declared paths are validated **before** the turn runs, so a typo costs a round
 trip rather than a report. A declared file the turn never wrote is simply not
 registered — absent from the listing rather than a fetch that fails.
 
-Registrations expire after four hours. **The register expires, not the file:**
-deleting what a session wrote on a timer would contradict `DELETE` keeping the
-working directory, and the data is still reachable over ssh.
+Artifacts expire after four hours — **the registration and the file it names.**
+Expiring only the register would leave every report a session ever produced on
+disk for ever, merely unfetchable, and these files hold whatever the session
+was asked to write about.
+
+That does not contradict `DELETE` keeping the working directory. `DELETE`
+removes a *session*, and the directory is the work; an artifact is a declared
+output with a stated lifetime, and deleting it at expiry is what the lifetime
+promised. The janitor only ever removes files that were registered as outputs,
+and resolves each inside its session again before unlinking — everything else
+in the directory was never an artifact.
 
 Never declared, expired, and no longer on disk all answer `404` alike. A
 caller learns what it may fetch from the register, not by probing the

@@ -122,6 +122,9 @@ class Answer:
 
 @dataclass(frozen=True, slots=True)
 class Artifact:
+    """A declared output. ``expires_at`` takes the file with it, not just the
+    registration — fetch what you need before then."""
+
     path: str
     size: int = 0
     job: str = ""

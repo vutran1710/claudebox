@@ -22,10 +22,10 @@ type Artifact struct {
 	Size      int64
 	SHA256    string
 	CreatedAt time.Time
-	// ExpiresAt is when the file stops being fetchable. The register expires,
-	// not the file: deleting what a session wrote on a timer would contradict
-	// the rule that DELETE keeps the working directory, and the data stays
-	// reachable over ssh either way.
+	// ExpiresAt is when the artifact goes. Both the registration and the file
+	// it names: a declared output has a stated lifetime, and honouring it only
+	// in the register would leave the data on disk for ever while merely
+	// making it unfetchable.
 	ExpiresAt time.Time
 }
 
@@ -99,14 +99,38 @@ func (s *Store) Artifact(session, path string) (*Artifact, error) {
 	return &a, nil
 }
 
-// SweepArtifacts drops expired registrations and reports how many went.
-func (s *Store) SweepArtifacts() (int, error) {
-	res, err := s.db.Exec(`DELETE FROM artifacts WHERE expires_at <= ?`, s.now().Unix())
+// SweepArtifacts drops expired registrations and returns what it removed, so
+// the caller can delete the files they named.
+//
+// The rows go here and the files go there: this package owns the database and
+// knows nothing about the filesystem, which is what keeps it testable without
+// one.
+func (s *Store) SweepArtifacts() ([]Artifact, error) {
+	rows, err := s.db.Query(
+		`SELECT session_name, path, job_id, size, sha256, created_at, expires_at
+		 FROM artifacts WHERE expires_at <= ?`, s.now().Unix())
 	if err != nil {
-		return 0, fmt.Errorf("sweep artifacts: %w", err)
+		return nil, fmt.Errorf("sweep artifacts: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
+	var expired []Artifact
+	for rows.Next() {
+		var a Artifact
+		var created, expires int64
+		if err := rows.Scan(&a.SessionName, &a.Path, &a.JobID, &a.Size, &a.SHA256, &created, &expires); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan expired artifact: %w", err)
+		}
+		a.CreatedAt, a.ExpiresAt = time.Unix(created, 0), time.Unix(expires, 0)
+		expired = append(expired, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := s.db.Exec(`DELETE FROM artifacts WHERE expires_at <= ?`, s.now().Unix()); err != nil {
+		return expired, fmt.Errorf("sweep artifacts: %w", err)
+	}
+	return expired, nil
 }
 
 // DeleteArtifacts forgets a session's register. Called when the session goes,

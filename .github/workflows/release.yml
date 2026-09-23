@@ -44,7 +44,11 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          TAG: ${{ github.ref_name }}
+          # inputs.tag when dispatched, ref_name when a tag was pushed. On a
+          # dispatch ref_name is the *branch*, so this used to stamp binaries
+          # with "main" while the release itself was tagged correctly — the
+          # two jobs disagreed about what was being released.
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           # CGO_ENABLED=0 matters: the session store uses a pure-Go SQLite
           # driver, and cgo would make these binaries non-portable and break

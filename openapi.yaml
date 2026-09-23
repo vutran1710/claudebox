@@ -521,7 +521,16 @@ components:
 
     Priming:
       type: object
-      description: Present only when a session was created with skills.
+      description: |
+        Present only when a session was created with skills.
+
+        While `status` is `running`, a query on that session is refused with
+        409: priming holds the session's one running-query slot. The session
+        exists before it is usable, and `poll` is how to know when that
+        changes.
+
+        A `201` carrying `status: failed` means the session was created and
+        priming was not. It is real, usable, and unprimed.
       properties:
         job: { type: string }
         status:

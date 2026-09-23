@@ -189,3 +189,61 @@ func TestPrimingAdvancesTurnsSoTheNextQueryResumes(t *testing.T) {
 		t.Fatalf("turns = %v, want 1 — the next query must resume, not recreate", got)
 	}
 }
+
+// Priming holds the session's one running-query slot, so a query sent before
+// it finishes is refused. Pinned here because it is a consequence of the
+// design rather than an accident: creation returning a job means the session
+// exists before it is usable, and a caller needs to know that is deliberate.
+func TestAQueryDuringPrimingIsRefused(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	h := answering(t, stalling("uuid-slow", "later", release))
+
+	w := h.do("POST", "/sessions", map[string]any{
+		"name": "still-priming", "skills": []string{"inline"}, "respond_within": "50ms",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	priming, _ := h.json(w)["priming"].(map[string]any)
+	if priming["status"] != store.Running {
+		t.Fatalf("expected priming to still be running: %v", priming)
+	}
+
+	q := h.do("POST", "/sessions/still-priming/query", map[string]any{
+		"prompt": "hi", "respond_within": "1s",
+	})
+	if q.Code != http.StatusConflict {
+		t.Fatalf("query during priming = %d, want 409", q.Code)
+	}
+	// The message has to be usable, because this is the one place a caller
+	// meets it without having started a query themselves.
+	if !strings.Contains(q.Body.String(), "already has a query running") {
+		t.Errorf("error does not explain the wait: %s", q.Body)
+	}
+}
+
+// A session created with skills that fail is still a session. The 201 is
+// honest about both halves: it exists, and priming did not happen.
+func TestASessionSurvivesFailedPriming(t *testing.T) {
+	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		id := ""
+		for i, a := range args {
+			if a == "--session-id" || a == "--resume" {
+				id = args[i+1]
+			}
+		}
+		return []byte(result(id, "Unknown command: /nope", 0)), nil
+	})
+	h.do("POST", "/sessions", map[string]any{
+		"name": "half", "skills": []string{"nope"}, "respond_within": "30s",
+	})
+	got, _ := h.Store.Get("half")
+	if got == nil {
+		t.Fatal("the session was rolled back — priming failing is not creation failing")
+	}
+	// And it is usable: the failed priming job is finished, so the slot is free.
+	if w := h.do("POST", "/sessions/half/query", map[string]any{"prompt": "hi", "respond_within": "10s"}); w.Code == http.StatusConflict {
+		t.Error("the session stayed locked after priming failed")
+	}
+}

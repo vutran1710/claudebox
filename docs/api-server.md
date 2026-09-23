@@ -155,6 +155,23 @@ asked for is worse than one that says which half failed: the caller's
 assumption about what the session knows is already wrong, and continuing would
 bury that under later output.
 
+**Two consequences of creation running turns**, both deliberate and both
+pinned by tests, because a caller meets them without having done anything
+themselves:
+
+- **A query sent while priming is still running gets `409`.** Priming holds the
+  session's one running-query slot, which is the same rule that stops two
+  `--resume` processes interleaving. The session exists before it is usable,
+  and `priming.poll` is how to know when that changes.
+- **A `201` can carry `priming.status: failed`.** Creation succeeded; priming
+  did not. The session is real, usable, and unprimed — rolling it back would
+  discard something that works because something optional did not.
+
+The alternative was deferring the skills to the first query, which would have
+removed both. It was rejected: knowing at creation whether a session got its
+instructions is worth more than an instant `201`, because the answer arrives
+while the caller is still in a position to do something about it.
+
 ### Query: the caller says how long it will wait
 
 A query holds the connection until Claude finishes, and returns the answer:

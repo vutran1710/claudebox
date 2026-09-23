@@ -106,6 +106,7 @@ was reported as copied.
 
 ```bash
 go test ./...              # unit and integration, drives real tmux and SQLite
+scripts/smoke-api.sh       # drive the HTTP API against the Claude on this machine
 scripts/smoke.sh --create  # provision a real droplet, drive it, destroy it
 ```
 

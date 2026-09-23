@@ -72,8 +72,8 @@ class NewSession(ModalScreen[dict[str, Any] | None]):
             )
             yield Input(placeholder="skills to invoke, comma separated (costs a turn each)", id="skills")
             yield Label(
-                "Skills installed on the box already load for every session — "
-                "only name them here to actually run them.",
+                "Skills on the box already load for every session — name them "
+                "here only to actually run them.",
                 classes="hint",
             )
             with Horizontal(classes="dialog-buttons"):
@@ -174,8 +174,9 @@ class ClaudeBoxTUI(App):
     #log { height: 10; border-top: solid $panel-darken-2; padding: 0 1; }
     DataTable { height: 1fr; }
     .pane { padding: 1 2; height: 1fr; }
-    .field-label { color: $text-muted; margin-top: 1; }
-    #answer { height: 1fr; border: solid $panel-darken-2; margin-top: 1; }
+    .field-label { color: $text-muted; }
+    #prompt { height: 5; border: solid $panel-darken-2; }
+    #answer { height: 1fr; min-height: 8; border: solid $panel-darken-2; margin-top: 1; }
     #dialog {
         width: 74; padding: 1 2; background: $surface;
         border: thick $primary; height: auto;
@@ -187,7 +188,7 @@ class ClaudeBoxTUI(App):
     .dialog-title { text-style: bold; margin-bottom: 1; }
     .dialog-buttons { height: auto; margin-top: 1; }
     .dialog-buttons Button { margin-right: 2; }
-    .hint { color: $text-muted; margin-top: 1; }
+    .hint { color: $text-muted; margin-top: 1; width: 100%; }
     ModalScreen { align: center middle; }
     """
 
@@ -230,9 +231,8 @@ class ClaudeBoxTUI(App):
                             yield Input(placeholder="report.html", id="artifacts")
                             yield Button("Stamp", id="stamp")
                         yield Label(
-                            "Only declared files are fetchable afterwards. Stamp adds a "
-                            "UTC timestamp so a re-run does not overwrite the last one — "
-                            "name the same file in your prompt.",
+                            "Only declared files are fetchable. Stamp adds a UTC "
+                            "timestamp so a re-run keeps the earlier report.",
                             classes="hint",
                         )
                         with Horizontal(classes="dialog-buttons"):

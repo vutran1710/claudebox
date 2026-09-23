@@ -4,6 +4,10 @@ Two files. `claudebox.py` talks to the API and has no opinions about how you
 use it; `tui.py` is a terminal client built on top, for poking at every
 endpoint by hand.
 
+<p align="center">
+  <img src="screenshots/01-sessions.svg" width="860" alt="The TUI: sessions on the left, the query form with a declared artifact on the right, and every request logged with its status and duration below.">
+</p>
+
 ## The TUI
 
 ```bash
@@ -34,6 +38,13 @@ it.
 **Stamp**, next to the artifacts field, adds a UTC timestamp to each declared
 name. Two queries in one session that both write `report.html` leave one
 report, and the box cannot know which you wanted.
+
+| | |
+|---|---|
+| <img src="screenshots/02-artifacts.svg" width="420" alt="The artifacts tab, listing only the files a query declared, with size and expiry."> | <img src="screenshots/03-openapi.svg" width="420" alt="Every endpoint, read from the box's own OpenAPI document."> |
+| What this session may hand back — only declared outputs, with their 4h expiry. | Every endpoint, listed from the box's own OpenAPI document. |
+| <img src="screenshots/04-commands.svg" width="420" alt="The slash-command allowlist the box will run."> | <img src="screenshots/05-new-session.svg" width="420" alt="Creating a session, fixing its model, effort and permission mode."> |
+| The slash-command allowlist. Anything not in it is refused. | Model, effort and permission mode are fixed when the session is created. |
 
 ## The client
 

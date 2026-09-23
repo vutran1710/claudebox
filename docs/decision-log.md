@@ -428,3 +428,33 @@ Selection is a pure `Plan` that runs before anything touches the network, so a
 filter entry naming something absent, or escaping the directory, is answered
 immediately rather than after an ssh timeout against a box that was never the
 problem.
+
+## `cbx` is downloaded from a release, and `--binary` stays for what that cannot do
+
+Setup required a locally built linux binary, so getting started meant having a
+Go toolchain and knowing to cross-compile. It now downloads the release onto
+the box by default.
+
+The box pulls it directly rather than the binary travelling through the laptop.
+It already fetches node, gh and claude from the internet, and routing 17MB
+through an ssh connection buys nothing.
+
+**Which release: this tool's own version.** The two binaries are built and
+published from the same commit, so pairing them is what stops a `cbx-setuptool`
+writing a systemd unit for a `cbx` that has no `serve` command. A dev build has
+no matching release and takes the latest. `--cbx-version` pins one explicitly.
+
+**`--binary` is not removed**, because the reason it exists is unchanged and
+recorded above: *"the binary is uploaded rather than downloaded from a release,
+so an unreleased build can be tested on real metal — which is the whole reason
+deployment moved off CI."* Downloading is the default; uploading is how you
+test something that was never released. When both are given, the upload wins —
+someone who built a binary on purpose meant it.
+
+The version is validated before it reaches the remote shell, not quoted into
+it. Same rule as `git clone` and `--model`: a value reaching something that
+parses it gets validated, and quoting answers a different question.
+
+**Wrong if** boxes ever need to run a build that is not published, routinely
+rather than while testing — at which point the upload path should become the
+default again rather than growing a second downloader.

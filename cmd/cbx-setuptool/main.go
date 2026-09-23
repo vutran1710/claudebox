@@ -55,7 +55,7 @@ func target(host, user string) (setuptool.Target, error) {
 }
 
 func setupCmd() *cobra.Command {
-	var host, user, binary string
+	var host, user, binary, cbxVersion string
 	var skipAuth, skipClaude, withAPI bool
 
 	cmd := &cobra.Command{
@@ -64,7 +64,7 @@ func setupCmd() *cobra.Command {
 		Long: `Runs the whole provisioning flow against a box:
 
   1. install the tool chain (node, gh, vercel, supabase, claude)
-  2. install cbx from a locally built linux binary
+  2. install cbx — downloaded from a release, or uploaded with --binary
   3. sign Claude Code in — interactive, you complete it in a browser
   4. authenticate gh / vercel / supabase from tokens
   5. copy your skills, agents and settings across
@@ -74,20 +74,22 @@ after a failure.
 
 Step 3 needs you: the Claude subscription login is a browser OAuth with no
 token path. Everything else can be answered from environment variables.`,
-		Example: "  cbx-setuptool setup --host 203.0.113.9 --binary ./cbx-linux\n" +
-			"  cbx-setuptool setup --host 203.0.113.9 --binary ./cbx-linux --skip-auth",
+		Example: "  cbx-setuptool setup --host 203.0.113.9\n" +
+			"  cbx-setuptool setup --host 203.0.113.9 --with-api\n" +
+			"  cbx-setuptool setup --host 203.0.113.9 --binary ./cbx-linux",
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			t, err := target(host, user)
 			if err != nil {
 				return err
 			}
-			return runSetup(t, binary, skipAuth, skipClaude, withAPI)
+			return runSetup(t, binary, cbxVersion, skipAuth, skipClaude, withAPI)
 		},
 	}
 	cmd.Flags().StringVar(&host, "host", "", "IP or hostname of the box (required)")
 	cmd.Flags().StringVar(&user, "user", "root", "SSH user")
-	cmd.Flags().StringVar(&binary, "binary", "", "Locally built linux cbx to install (GOOS=linux GOARCH=amd64)")
+	cmd.Flags().StringVar(&binary, "binary", "", "Upload this locally built linux cbx instead of downloading a release (for testing an unreleased build)")
+	cmd.Flags().StringVar(&cbxVersion, "cbx-version", "", "Release tag of cbx to install (default: this tool's own version, or the latest release)")
 	cmd.Flags().BoolVar(&skipAuth, "skip-auth", false, "Skip the CLI token prompts")
 	cmd.Flags().BoolVar(&skipClaude, "skip-claude-login", false, "Install everything but leave Claude Code signed out (sign in later with another setup run)")
 	cmd.Flags().BoolVar(&withAPI, "with-api", false, "Install and start the HTTP API as a systemd service")

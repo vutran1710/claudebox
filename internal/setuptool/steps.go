@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -176,6 +177,60 @@ func InstallCBX(t Target, localBinary string) error {
 	}
 	_, err = Run(t, "chmod +x /usr/local/bin/cbx")
 	return err
+}
+
+// ReleaseRepo is where released binaries come from.
+const ReleaseRepo = "https://github.com/vutran1710/claudebox"
+
+// releaseTag restricts what can be interpolated into a download URL inside a
+// remote shell. The rule this project keeps relearning: a value reaching
+// something that parses it needs validating, not quoting.
+var releaseTag = regexp.MustCompile(`^v?[0-9A-Za-z][0-9A-Za-z.\-]{0,63}$`)
+
+// FetchCBX downloads a released cbx onto the box and reports the version it
+// installed.
+//
+// The box pulls it directly rather than the binary travelling through the
+// laptop: the box already fetches node, gh and claude from the internet, and
+// routing a 17MB download through an ssh connection buys nothing.
+//
+// An empty version takes the latest release. InstallCBX remains for the case
+// this cannot serve — testing an unreleased build on real metal, which is why
+// the upload path exists at all.
+func FetchCBX(t Target, version string) (string, error) {
+	if version != "" && !releaseTag.MatchString(version) {
+		return "", fmt.Errorf("invalid version %q: expected a release tag like v0.9.0", version)
+	}
+	path := "releases/latest/download"
+	if version != "" {
+		path = "releases/download/" + version
+	}
+	// dpkg names the architecture the same way the release assets do, so no
+	// translation table is needed — and an architecture with no asset fails
+	// here with its name rather than as a confusing 404.
+	out, err := remote(t, fmt.Sprintf(`set -e
+arch=$(dpkg --print-architecture)
+case "$arch" in
+  amd64|arm64) ;;
+  *) echo "no released cbx for architecture $arch" >&2; exit 1 ;;
+esac
+url="%s/%s/cbx-linux-$arch"
+curl -fsSL "$url" -o /tmp/cbx.download
+install -m 0755 /tmp/cbx.download /usr/local/bin/cbx
+rm -f /tmp/cbx.download
+test -x /usr/local/bin/cbx
+/usr/local/bin/cbx --version`, ReleaseRepo, path))
+	if err != nil {
+		return "", fmt.Errorf("download cbx: %w", err)
+	}
+	// Reported by the binary itself, so what is printed is what is installed
+	// rather than what was asked for.
+	return strings.TrimSpace(lastLine(out)), nil
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }
 
 // checkELF verifies a file is a Linux executable by its magic bytes.

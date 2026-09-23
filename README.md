@@ -32,16 +32,29 @@ Create an Ubuntu machine with your SSH key on it — a DigitalOcean droplet, or
 anything you can `ssh root@` into. Then, from your laptop:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o cbx-linux ./cmd/cbx
-go build -o cbx-setuptool ./cmd/cbx-setuptool
+# grab cbx-setuptool for your laptop from the latest release
+curl -fsSL -o cbx-setuptool \
+  https://github.com/vutran1710/claudebox/releases/latest/download/cbx-setuptool-darwin-arm64
+chmod +x cbx-setuptool
 
-./cbx-setuptool setup --host <ip> --binary ./cbx-linux
+./cbx-setuptool setup --host <ip> --with-api
 ```
 
-That installs the tool chain, puts `cbx` on the box, signs Claude Code in,
-authenticates `gh`/`vercel`/`supabase` from tokens, and copies your skills and
-settings across. Each step is skipped if already done, so re-running after a
-failure is cheap.
+That installs the tool chain, downloads `cbx` onto the box, signs Claude Code
+in, authenticates `gh`/`vercel`/`supabase` from tokens, and copies your skills
+and settings across. Each step is skipped if already done, so re-running after
+a failure is cheap.
+
+`cbx` is fetched from a release matching this tool's own version — the two are
+built from the same commit, so pairing them is what stops a setuptool
+configuring a `cbx` that lacks the command it just wrote a unit for. Pin one
+with `--cbx-version v0.9.0`, or upload a local build with `--binary ./cbx-linux`
+when testing something unreleased:
+
+```bash
+GOOS=linux GOARCH=amd64 go build -o cbx-linux ./cmd/cbx
+./cbx-setuptool setup --host <ip> --binary ./cbx-linux
+```
 
 Then start the always-on session and open its URL on your phone:
 
@@ -65,7 +78,7 @@ rather than vanishing, and a Remote Control URL survives a tmux restart.
 ## `cbx-setuptool` — on your laptop
 
 ```
-cbx-setuptool setup   --host <ip> --binary <linux-cbx>   the whole flow
+cbx-setuptool setup   --host <ip> [--with-api]          the whole flow
 cbx-setuptool auth    --host <ip> [github|vercel|supabase]
 cbx-setuptool migrate --host <ip> [--claude-dir <dir>] [--filter a,b]
 cbx-setuptool status  --host <ip>    what is installed and authenticated

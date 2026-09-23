@@ -30,7 +30,7 @@ func step(status, name, detail string) {
 	fmt.Printf("  %s %s\n", status, name)
 }
 
-func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude, withAPI bool) error {
+func runSetup(t setuptool.Target, binary, cbxVersion string, skipAuth, skipClaude, withAPI bool) error {
 	fmt.Printf("\nProvisioning %s\n\n", t)
 
 	fmt.Println("Tools")
@@ -48,13 +48,21 @@ func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude, withAPI b
 	}
 
 	fmt.Println("\ncbx")
-	if binary == "" {
-		step(skip, "cbx", "no --binary given, skipping")
-	} else if err := setuptool.InstallCBX(t, binary); err != nil {
-		step(cross, "cbx", err.Error())
-		return err
+	if binary != "" {
+		// Uploading an unreleased build on purpose. This is the reason the
+		// upload path exists, so it wins over any version that was named.
+		if err := setuptool.InstallCBX(t, binary); err != nil {
+			step(cross, "cbx", err.Error())
+			return err
+		}
+		step(tick, "cbx", binary+" → /usr/local/bin/cbx")
 	} else {
-		step(tick, "cbx", "/usr/local/bin/cbx")
+		installed, err := setuptool.FetchCBX(t, cbxDefaultVersion(cbxVersion))
+		if err != nil {
+			step(cross, "cbx", err.Error())
+			return err
+		}
+		step(tick, "cbx", installed)
 	}
 
 	fmt.Println("\nClaude Code")
@@ -127,6 +135,22 @@ func runSetup(t setuptool.Target, binary string, skipAuth, skipClaude, withAPI b
 
 	fmt.Printf("\n%s ready. Start the master session:\n\n    ssh %s cbx new master\n\n", t, t)
 	return nil
+}
+
+// cbxDefaultVersion picks which release to install.
+//
+// This tool's own version by default: the two binaries are built and released
+// from the same commit, so pairing them is what keeps a setuptool from
+// writing a systemd unit for a cbx that has no serve command. A dev build has
+// no release to match, so it takes the latest.
+func cbxDefaultVersion(requested string) string {
+	if requested != "" {
+		return requested
+	}
+	if version == "dev" || version == "" {
+		return ""
+	}
+	return "v" + strings.TrimPrefix(version, "v")
 }
 
 // runAPI operates the API server on an already-provisioned box.

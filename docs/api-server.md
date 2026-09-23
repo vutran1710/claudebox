@@ -107,6 +107,9 @@ POST   /sessions/{name}/command          {command, respond_within?} → declared
 
 PUT    /sessions/{name}/system-prompt    {prompt}
 PUT    /sessions/{name}/skills/{skill}   SKILL.md body
+
+GET    /sessions/{name}/files            what the session produced
+GET    /sessions/{name}/files/{path}     fetch one of them
 ```
 
 ### Opening an existing session needs no state
@@ -347,6 +350,31 @@ Two things the spec still cannot catch, so the server checks them anyway:
   codeword afterwards and getting it back. That is why it is `rotate-session`
   and not `forward`: cbx allocates a new conversation id and resets `turns`, and
   the history is genuinely gone from the session's point of view.
+
+### Getting work back out
+
+A session writes its output into its own directory — a report, a rendered
+page, a diff. The API could put files in and never take any out, which made it
+useless for anything whose result is a file rather than an answer.
+
+```
+GET /sessions/report-42/files              → report.html, data/summary.md
+GET /sessions/report-42/files/report.html  → the bytes
+```
+
+Machinery is skipped when listing — `.git`, `node_modules`, `.claude`,
+`vendor`, `target` — because they are a build's output, not the session's. A
+listing past the cap says so rather than being silently cut.
+
+Both are readable on an interactive session. "Interactive sessions are
+read-only through the API" is a rule about writing, and nothing here competes
+with the phone for a turn.
+
+**The path is checked by resolving it, not by inspecting the string.** A path
+can escape a directory without containing `..`: a symlink inside the session
+pointing at `/etc/passwd` reads as an ordinary relative name right up until it
+is resolved. Resolution happens first, containment is checked after, and the
+test tries the symlink as well as the obvious traversals.
 
 ### Jobs are rows, and a janitor sweeps them
 

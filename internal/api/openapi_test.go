@@ -11,6 +11,13 @@ import (
 // to it in both directions, because a described endpoint that does not exist
 // and an endpoint nobody described fail in opposite, equally annoying ways.
 
+// normalise turns Go's trailing wildcard into a plain parameter, so the
+// document can stay valid OpenAPI while still being checked against the real
+// routing table.
+func normalise(pattern string) string {
+	return strings.ReplaceAll(pattern, "...}", "}")
+}
+
 func specPaths(t *testing.T) map[string]bool {
 	t.Helper()
 	doc, err := OpenAPIDocument()
@@ -40,7 +47,7 @@ func specPaths(t *testing.T) map[string]bool {
 func TestEveryRouteIsDescribed(t *testing.T) {
 	described := specPaths(t)
 	for _, r := range (&Server{}).routes() {
-		if !described[r.Pattern] {
+		if !described[normalise(r.Pattern)] {
 			t.Errorf("route %q is not in openapi.yaml", r.Pattern)
 		}
 	}
@@ -49,7 +56,7 @@ func TestEveryRouteIsDescribed(t *testing.T) {
 func TestEveryDescribedPathIsARoute(t *testing.T) {
 	real := map[string]bool{}
 	for _, r := range (&Server{}).routes() {
-		real[r.Pattern] = true
+		real[normalise(r.Pattern)] = true
 	}
 	for described := range specPaths(t) {
 		if !real[described] {

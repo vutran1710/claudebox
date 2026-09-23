@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -153,4 +155,61 @@ func TestPutCommandsRefusesAMalformedSpec(t *testing.T) {
 	if fmt.Sprint(after["commands"]) != fmt.Sprint(before["commands"]) {
 		t.Error("a rejected spec still changed what the box accepts")
 	}
+}
+
+// GET returns the spec and PUT accepts one, so what comes out must go back in.
+// It did not: Command carried only YAML tags, so encoding/json emitted "Name"
+// and "RequiresArgs" while the parser expected "name" and "requires_args".
+// Reading the spec, changing it and writing it back was impossible, and no
+// test noticed because each direction was only ever exercised alone.
+func TestTheCommandSpecRoundTrips(t *testing.T) {
+	h := answering(t, answers("s", "hi"))
+
+	before := h.json(h.do("GET", "/commands", nil))
+	raw, err := json.Marshal(map[string]any{
+		"version": before["version"], "commands": before["commands"],
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := h.do("PUT", "/commands", string(raw))
+	if w.Code != http.StatusOK {
+		t.Fatalf("writing back what GET returned was refused: %d %s", w.Code, w.Body)
+	}
+
+	after := h.json(h.do("GET", "/commands", nil))
+	if fmt.Sprint(after["commands"]) != fmt.Sprint(before["commands"]) {
+		t.Errorf("the spec changed on a round trip:\n before %v\n after  %v",
+			before["commands"], after["commands"])
+	}
+}
+
+func TestTheCommandSpecUsesSnakeCaseLikeEveryOtherEndpoint(t *testing.T) {
+	h := answering(t, answers("s", "hi"))
+	got := h.json(h.do("GET", "/commands", nil))
+	list, _ := got["commands"].([]any)
+	if len(list) == 0 {
+		t.Fatal("no commands returned")
+	}
+	first, _ := list[0].(map[string]any)
+	for _, want := range []string{"name", "effect"} {
+		if _, ok := first[want]; !ok {
+			t.Errorf("key %q missing; got %v", want, keysOf(first))
+		}
+	}
+	for _, unwanted := range []string{"Name", "Effect", "RequiresArgs"} {
+		if _, ok := first[unwanted]; ok {
+			t.Errorf("key %q is Go-cased; every other endpoint is snake_case", unwanted)
+		}
+	}
+}
+
+func keysOf(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

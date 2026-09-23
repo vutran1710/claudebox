@@ -31,16 +31,19 @@ const (
 // project root, so what ships and what a reader sees cannot drift apart.
 func Default() []byte { return claudebox.CommandsExample }
 
+// Both tag sets are required, and must agree. The spec is written as YAML and
+// served as JSON, so a field tagged only for YAML is emitted by encoding/json
+// under its Go name — which is how GET and PUT stopped being round-trippable.
 type Command struct {
-	Name         string `yaml:"name"`
-	Effect       string `yaml:"effect"`
-	RequiresArgs bool   `yaml:"requires_args"`
-	Description  string `yaml:"description"`
+	Name         string `yaml:"name" json:"name"`
+	Effect       string `yaml:"effect" json:"effect"`
+	RequiresArgs bool   `yaml:"requires_args" json:"requires_args"`
+	Description  string `yaml:"description" json:"description,omitempty"`
 }
 
 type Spec struct {
-	Version  int       `yaml:"version"`
-	Commands []Command `yaml:"commands"`
+	Version  int       `yaml:"version" json:"version"`
+	Commands []Command `yaml:"commands" json:"commands"`
 }
 
 // DefaultPath is where the spec lives. Config, not state: this is hand-edited

@@ -207,18 +207,18 @@ container's CMD; a PID 1 that forks and exits takes the container with it.`,
 }
 
 func apiKeyCmd() *cobra.Command {
-	var permission string
+	var role string
 	cmd := &cobra.Command{
 		Use:   "api-key <list|add|permit|revoke|rotate> [label]",
 		Short: "Manage the keys that may call the API",
 		Long: `Lists, adds, revokes or rotates the keys in this box's config.
 
-A key names a permission profile, and the profile decides what its sessions
-may do — the caller never chooses. The profiles live in ` + "`~/.config/cbx/cbx.yaml`" + `
+A key names a role, and the role decides what its sessions may do — the caller
+never chooses. Roles live in ` + "`~/.config/cbx/cbx.yaml`" + `
 and are edited there; the keys themselves live in the session database, so a
 caller rewriting the command allowlist can never reach them.
 
-bypassPermissions cannot be a profile: under it Claude Code ignores deny rules
+bypassPermissions cannot be a role: under it Claude Code ignores deny rules
 entirely, so a key carrying it would have no boundary at all.`,
 		Example: "  cbx api-key list\n" +
 			"  cbx api-key add backend\n" +
@@ -259,15 +259,15 @@ entirely, so a key carrying it would have no boundary at all.`,
 					if err != nil {
 						return err
 					}
-					if _, err := cfg.Role(permission); err != nil {
+					if _, err := cfg.Role(role); err != nil {
 						return err
 					}
-					value, err := a.Store.AddKey(label, permission)
+					value, err := a.Store.AddKey(label, role)
 					if err != nil {
 						return err
 					}
 					fmt.Printf("label\t%s\n", label)
-					fmt.Printf("permission\t%s\n", permission)
+					fmt.Printf("role\t%s\n", role)
 					fmt.Printf("key\t%s\n", value)
 				case "rotate":
 					if err := needLabel(); err != nil {
@@ -287,13 +287,13 @@ entirely, so a key carrying it would have no boundary at all.`,
 					if err != nil {
 						return err
 					}
-					if _, err := cfg.Role(permission); err != nil {
+					if _, err := cfg.Role(role); err != nil {
 						return err
 					}
-					if err := a.Store.SetPermission(label, permission); err != nil {
+					if err := a.Store.SetPermission(label, role); err != nil {
 						return err
 					}
-					fmt.Printf("label\t%s\npermission\t%s\n", label, permission)
+					fmt.Printf("label\t%s\nrole\t%s\n", label, role)
 				case "revoke":
 					if err := needLabel(); err != nil {
 						return err
@@ -309,7 +309,7 @@ entirely, so a key carrying it would have no boundary at all.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&permission, "role", "reporter",
+	cmd.Flags().StringVar(&role, "role", "reporter",
 		"Which role from cbx.yaml this key holds")
 	return cmd
 }

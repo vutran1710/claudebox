@@ -81,11 +81,8 @@ func runSetup(t setuptool.Target, binary, cbxVersion, claudePath string, with []
 	} else if setuptool.ClaudeLoggedIn(t) {
 		step(skip, "login", "already signed in")
 	} else {
-		fmt.Println("\n  Claude Code will open on the box. Type /login, complete sign-in in")
-		fmt.Println("  your browser, then press Ctrl-D to return here.")
-		fmt.Print("\n  Press Enter to continue: ")
-		bufio.NewReader(os.Stdin).ReadString('\n')
-		if err := setuptool.ClaudeLogin(t); err != nil {
+		fmt.Println("\n" + setuptool.LoginGuidance)
+		if err := setuptool.ClaudeLogin(t, os.Stdout, os.Stdin); err != nil {
 			step(cross, "login", err.Error())
 			return err
 		}

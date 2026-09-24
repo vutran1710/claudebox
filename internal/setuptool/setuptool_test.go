@@ -447,3 +447,51 @@ func TestPATHClaimingStepsCheckTheDefaultPath(t *testing.T) {
 		t.Errorf("expected the full tool chain, got %v", probed)
 	}
 }
+
+// --- signing in from outside the box ---
+
+// The point of setuptool is that provisioning happens from a laptop. Handing
+// the terminal to the Claude Code TUI made signing in the one step you had to
+// do on the box, with the URL hidden behind a slash command.
+func TestTheLoginRunsTheLoginCommandNotTheTUI(t *testing.T) {
+	if !strings.Contains(claudeLoginStart, "claude auth login") {
+		t.Error("the sign-in does not run `claude auth login`")
+	}
+	// Pinned rather than defaulted: the other flow bills API usage instead of
+	// the subscription.
+	if !strings.Contains(claudeLoginStart, "--claudeai") {
+		t.Error("the subscription flow is not chosen explicitly")
+	}
+	// The pipe has to be held open, or the login reads EOF before anyone has
+	// seen the URL.
+	if !strings.Contains(claudeLoginStart, "mkfifo") || !strings.Contains(claudeLoginStart, "sleep 1800") {
+		t.Error("nothing holds the code pipe open")
+	}
+}
+
+// Instructions describing a screen that no longer appears are worse than none.
+func TestTheGuidanceDescribesWhatActuallyHappens(t *testing.T) {
+	for _, gone := range []string{"/login", "Ctrl-D", "Press Enter"} {
+		if strings.Contains(LoginGuidance, gone) {
+			t.Errorf("the guidance still mentions %q, which is not part of this flow", gone)
+		}
+	}
+	if !strings.Contains(LoginGuidance, "URL") || !strings.Contains(LoginGuidance, "code") {
+		t.Errorf("the guidance does not say what to expect: %q", LoginGuidance)
+	}
+}
+
+// Claude Code wraps the URL in an OSC-8 hyperlink escape, so the raw output
+// carries it twice with control bytes between. Anything reading it from
+// outside a terminal has to strip them.
+func TestFindLoginURLReadsThroughTheTerminalEscapes(t *testing.T) {
+	const want = "https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz"
+	raw := "Opening browser to sign in…\nIf the browser didn't open, visit: \x1b]8;;" +
+		want + "\x07" + want + "\x1b]8;;\x07\nPaste code here if prompted > "
+	if got := FindLoginURL(raw); got != want {
+		t.Errorf("FindLoginURL() = %q, want %q", got, want)
+	}
+	if got := FindLoginURL("nothing here yet"); got != "" {
+		t.Errorf("FindLoginURL() invented %q", got)
+	}
+}

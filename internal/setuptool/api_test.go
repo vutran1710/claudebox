@@ -304,3 +304,52 @@ func TestTheFirstKeyIsIssuedAgainstARestrictedRole(t *testing.T) {
 		t.Errorf("%q denies nothing, so setup would hand out an unrestricted key", DefaultRole)
 	}
 }
+
+// `api-key add` reports the whole record — label, role, value. Returning it
+// whole printed three tab-separated lines into a field sized for one.
+func TestIssuingAKeyReturnsTheKeyNotTheRecord(t *testing.T) {
+	record := "label\tsetup\nrole\treporter\nkey\tcbx_live_abc123\n"
+	got, ok := firstKey(record)
+	if !ok {
+		t.Fatal("the issued key could not be read back out of its own record")
+	}
+	if got != "cbx_live_abc123" {
+		t.Errorf("got %q, want just the key", got)
+	}
+	if strings.Contains(got, "\n") || strings.Contains(got, "\t") {
+		t.Errorf("the value still carries the rest of the record: %q", got)
+	}
+}
+
+// The tunnel's journal is readable by root. A user outside adm and
+// systemd-journal — the ordinary case — gets "No entries" rather than an
+// error, so an unprivileged read is indistinguishable from a tunnel that has
+// not started, and waits out the whole timeout while the URL sits in the log.
+func TestTheTunnelLogIsReadAsRoot(t *testing.T) {
+	tg, err := NewTarget("box", "deploy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tg.privileged(tunnelLogScript); !strings.HasPrefix(got, "sudo -n ") {
+		t.Errorf("the journal read is not escalated: %s", got)
+	}
+	// And unchanged for a root box, which never needed it.
+	root, err := NewTarget("box", "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := root.privileged(tunnelLogScript); got != tunnelLogScript {
+		t.Errorf("a root target should read the journal directly: %s", got)
+	}
+}
+
+// `|| true` turns a permission failure into a successful empty read, which is
+// how a tunnel that was working got reported as one that never started.
+func TestTheTunnelLogReadDoesNotSwallowItsError(t *testing.T) {
+	if strings.Contains(tunnelLogScript, "|| true") {
+		t.Error("the read swallows failures, so 'cannot read' is reported as 'nothing found'")
+	}
+	if strings.Contains(tunnelLogScript, "2>/dev/null") {
+		t.Error("the read discards stderr, hiding why it found nothing")
+	}
+}

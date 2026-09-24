@@ -111,18 +111,39 @@ func FindTunnelURL(log string) string {
 // Polled, because cloudflared takes a few seconds to register and prints the
 // hostname only once it has. Reading the journal once and reporting nothing
 // found would be true and useless.
+// TunnelURL waits for cloudflared to report the hostname it was given.
+//
+// The journal is read as root. A user outside adm and systemd-journal — which
+// is the ordinary case — gets "No entries" from journalctl rather than an
+// error, so an unprivileged read looks exactly like a tunnel that has not
+// started yet, and waits out the whole timeout while the URL sits in the log.
 func TunnelURL(t Target, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
+	var lastErr error
 	for {
-		out, err := Run(t, "journalctl -u cbx-tunnel --no-pager -n 200 2>/dev/null || true")
-		if err == nil {
+		out, err := remoteRoot(t, tunnelLogScript)
+		switch {
+		case err != nil:
+			// Kept, not swallowed: "could not read the log" and "no URL yet"
+			// are different problems and only one of them is worth waiting
+			// out.
+			lastErr = err
+		default:
 			if url := FindTunnelURL(out); url != "" {
 				return url, nil
 			}
 		}
 		if !time.Now().Before(deadline) {
+			if lastErr != nil {
+				return "", fmt.Errorf("could not read the tunnel log: %w", lastErr)
+			}
 			return "", fmt.Errorf("no tunnel URL appeared within %s — `systemctl status cbx-tunnel` on the box", timeout)
 		}
 		time.Sleep(2 * time.Second)
 	}
 }
+
+// tunnelLogScript reads the tunnel's journal. No `|| true`: a read that fails
+// has to be distinguishable from one that found nothing, or a permission
+// problem is reported as a timeout.
+const tunnelLogScript = "journalctl -u cbx-tunnel --no-pager -n 200"

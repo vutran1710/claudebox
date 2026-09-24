@@ -178,7 +178,18 @@ func APIKey(t Target) (string, error) {
 	if key, ok := firstKey(out); ok {
 		return key, nil
 	}
-	return Keys(t, "add", "setup", DefaultRole)
+	issued, err := Keys(t, "add", "setup", DefaultRole)
+	if err != nil {
+		return "", err
+	}
+	// `api-key add` reports the whole record — label, role, value — so the
+	// value has to be picked out. Returning the record printed three lines
+	// into a field sized for one.
+	key, ok := firstKey(issued)
+	if !ok {
+		return "", fmt.Errorf("issued a key but could not read it back from: %s", strings.TrimSpace(issued))
+	}
+	return key, nil
 }
 
 // firstKey picks a usable key out of `cbx api-key list`. The second return

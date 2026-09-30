@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -57,6 +58,14 @@ type queryRequest struct {
 	// A pointer so an omitted field is distinguishable from zero. Zero is
 	// meaningful: it asks for a job id immediately.
 	RespondWithin *respondWithin `json:"respond_within"`
+	// Effort overrides the session's for this turn only. Empty keeps the
+	// session's, which is what every caller that does not care sends.
+	//
+	// Per turn and not only per session because effort is a per-invocation
+	// flag underneath, and a conversation can reasonably hold turns worth
+	// different amounts: a draft redrawn daily, and one careful write-up at
+	// the end that should still see the drafts in its own history.
+	Effort string `json:"effort,omitempty"`
 }
 
 // window validates the deadline a caller asked for.
@@ -89,6 +98,14 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
+	// Checked before the turn runs, so a bad level costs a round trip rather
+	// than a session's worth of work at the wrong effort.
+	if !claude.ValidEffort(req.Effort) {
+		fail(w, http.StatusBadRequest, fmt.Sprintf(
+			"effort %q is not one of %s, %s, %s, %s, %s",
+			req.Effort, claude.Low, claude.Medium, claude.High, claude.XHigh, claude.Max))
+		return
+	}
 	wait, err := window(req.RespondWithin)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
@@ -112,7 +129,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
-		Effort:         sess.Effort,
+		Effort:         cmp.Or(req.Effort, sess.Effort),
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Prompt, declared)
 }

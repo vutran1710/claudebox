@@ -367,7 +367,7 @@ func TestRequiresArgsIsEnforcedOverHTTP(t *testing.T) {
 	h.headlessSession("q", "uuid-q", 1)
 	writeSpec(t, h, "commands:\n  - name: /model\n    effect: forward\n    requires_args: true\n")
 
-	if w := h.do("POST", "/sessions/q/command", map[string]any{"command": "/model", "respond_within": "5s"}); w.Code != http.StatusBadRequest {
+	if w := h.do("POST", "/sessions/q/command", map[string]any{"command": "/context", "respond_within": "5s"}); w.Code != http.StatusBadRequest {
 		t.Errorf("bare /model: code = %d, want 400 — it only prints its usage", w.Code)
 	}
 	if w := h.do("POST", "/sessions/q/command", map[string]any{"command": "/model sonnet", "respond_within": "5s"}); w.Code != http.StatusOK {
@@ -434,5 +434,94 @@ func TestTheShippedSpecAllowsClearByRotation(t *testing.T) {
 	c, err := spec.Resolve("/clear")
 	if err != nil || c.Effect != boxconfig.RotateSession {
 		t.Fatalf("/clear = %v, %v", c, err)
+	}
+}
+
+// A turn's effort overrides the session's, because effort is a per-invocation
+// flag underneath and a conversation can hold turns worth different amounts.
+
+func TestAQuerysEffortOverridesTheSessions(t *testing.T) {
+	var seen string
+	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		seen = strings.Join(args, " ")
+		return []byte(result("uuid-e", "ok", 1)), nil
+	})
+	sess := h.headlessSession("qe", "uuid-e", 1)
+	sess.Effort = claude.High
+	h.Store.Put(sess)
+
+	h.do("POST", "/sessions/qe/query", map[string]any{
+		"prompt": "hi", "respond_within": "10s", "effort": claude.Low,
+	})
+	if !strings.Contains(seen, "--effort low") {
+		t.Errorf("argv %q missing %q — the turn's effort did not reach Claude", seen, "--effort low")
+	}
+	if strings.Contains(seen, "--effort high") {
+		t.Errorf("argv %q still carries the session's effort", seen)
+	}
+}
+
+func TestAnOmittedEffortKeepsTheSessions(t *testing.T) {
+	var seen string
+	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		seen = strings.Join(args, " ")
+		return []byte(result("uuid-k", "ok", 1)), nil
+	})
+	sess := h.headlessSession("qk", "uuid-k", 1)
+	sess.Effort = claude.High
+	h.Store.Put(sess)
+
+	// Every caller written before this field sends no effort, and must be
+	// unaffected: the field is an override, never a reset.
+	h.do("POST", "/sessions/qk/query", map[string]any{"prompt": "hi", "respond_within": "10s"})
+	if !strings.Contains(seen, "--effort high") {
+		t.Errorf("argv %q lost the session's effort", seen)
+	}
+}
+
+func TestAQuerysBadEffortIsRefusedBeforeTheTurnRuns(t *testing.T) {
+	invoked := false
+	h := answering(t, func(_ context.Context, _ string, _ []string) ([]byte, error) {
+		invoked = true
+		return []byte(result("uuid-b", "ok", 1)), nil
+	})
+	h.Store.Put(h.headlessSession("qb", "uuid-b", 1))
+
+	w := h.do("POST", "/sessions/qb/query", map[string]any{
+		"prompt": "hi", "respond_within": "10s", "effort": "turbo",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "not one of") {
+		t.Errorf("body %q does not name the levels it would accept", w.Body.String())
+	}
+	if invoked {
+		t.Error("Claude was invoked for a turn whose effort could not be honoured")
+	}
+}
+
+func TestASlashCommandStillTakesTheSessionsEffort(t *testing.T) {
+	var seen, convo string
+	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		seen = strings.Join(args, " ")
+		// Echo the session's own conversation, or the command is reported as
+		// having run against a different one.
+		return []byte(result(convo, "ok", 1)), nil
+	})
+	h.do("POST", "/sessions", map[string]any{"name": "qc", "effort": claude.High})
+	sess, _ := h.Store.Get("qc")
+	convo = sess.ClaudeSessionID
+
+	// The override is on queries only. A declared slash command is the box's
+	// own, and nothing has asked to vary what one costs.
+	w := h.do("POST", "/sessions/qc/command", map[string]any{
+		"command": "/context", "respond_within": "10s", "effort": claude.Low,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("/context: %d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(seen, "--effort high") {
+		t.Errorf("argv %q did not use the session's effort", seen)
 	}
 }

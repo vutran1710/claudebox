@@ -674,6 +674,17 @@ components:
             simply not registered.
           items: { type: string }
           example: [report.html]
+        effort:
+          type: string
+          enum: [low, medium, high, xhigh, max]
+          description: |
+            Overrides the session's effort for this turn only. Omitted keeps the
+            session's, so a caller that does not care sends nothing.
+
+            Per turn as well as per session because effort is a per-invocation
+            flag underneath, and a conversation can hold turns worth different
+            amounts — a draft redrawn daily, and one careful write-up at the end
+            that should still see those drafts in its own history.
         respond_within:
           description: |
             How long the server may take to respond. Required, with no default:

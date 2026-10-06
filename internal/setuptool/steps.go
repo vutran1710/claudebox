@@ -537,13 +537,20 @@ func uploadPortableSettings(t Target, local, dest, localHome, remoteHome string)
 }
 
 func remoteHomeDir(t Target) (string, error) {
-	out, err := Run(t, `printf '%s' "$HOME"`)
+	// Stdout alone, not Run's combined output. ssh prints "Permanently added
+	// ... to the list of known hosts" to stderr on a first connection, and a
+	// combined read concatenated that onto the home path: every destination
+	// below became relative, and a whole migration landed in a directory named
+	// after the warning while reporting success.
+	out, err := exec_ssh(t, `printf '%s' "$HOME"`).Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("could not resolve $HOME on %s: %w", t, err)
 	}
-	h := strings.TrimSpace(out)
-	if h == "" {
-		return "", fmt.Errorf("could not resolve $HOME on %s", t)
+	h := strings.TrimSpace(string(out))
+	// Absolute and single-line, so anything else still on stdout fails here
+	// rather than becoming a path.
+	if !strings.HasPrefix(h, "/") || strings.ContainsAny(h, "\n\r") {
+		return "", fmt.Errorf("%s reported an unusable $HOME %q", t, h)
 	}
 	return h, nil
 }

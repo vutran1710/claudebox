@@ -11,9 +11,12 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -210,22 +213,41 @@ func (c *Client) Query(ctx context.Context, r Request) (*Result, error) {
 	return Parse(out)
 }
 
+type printed struct {
+	Result     string `json:"result"`
+	SessionID  string `json:"session_id"`
+	NumTurns   int    `json:"num_turns"`
+	IsError    bool   `json:"is_error"`
+	DurationMS int    `json:"duration_ms"`
+}
+
 // Parse reads print mode's JSON result.
+//
+// The result is the last object printed, not the only one: Claude announces the model it
+// resolved in an object of its own before answering, and a decode of the whole buffer fails
+// on the second top-level value. Taking the last one costs nothing when there is only one.
 func Parse(out []byte) (*Result, error) {
-	var raw struct {
-		Result     string `json:"result"`
-		SessionID  string `json:"session_id"`
-		NumTurns   int    `json:"num_turns"`
-		IsError    bool   `json:"is_error"`
-		DurationMS int    `json:"duration_ms"`
-	}
-	// Claude may print warnings before the object; decode from the first
+	// Claude may also print warnings before the first object; decode from the first
 	// brace rather than failing on them.
-	if i := indexBrace(out); i > 0 {
-		out = out[i:]
+	body := out
+	if i := indexBrace(body); i > 0 {
+		body = body[i:]
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("parse claude output: %w: %s", err, trim(string(out)))
+	var raw *printed
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	for {
+		var next printed
+		err := decoder.Decode(&next)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse claude output: %w: %s", err, trim(string(out)))
+		}
+		raw = &next
+	}
+	if raw == nil {
+		return nil, fmt.Errorf("parse claude output: no JSON object in: %s", trim(string(out)))
 	}
 	return &Result{
 		Answer:     raw.Result,

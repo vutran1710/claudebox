@@ -130,6 +130,19 @@ func TestParseSkipsNoiseBeforeTheObject(t *testing.T) {
 	}
 }
 
+// Claude announces the model it resolved before answering, so print mode can emit two
+// top-level objects. Decoding the whole buffer fails on the second; the result is the last.
+func TestParseTakesTheResultAfterAModelAnnouncement(t *testing.T) {
+	const announced = `{"model":"claude-sonnet-5-5","query_source":"sdk"}` + "\n"
+	r, err := Parse([]byte(announced + realResult))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if r.Answer != "BANANA" {
+		t.Errorf("Answer = %q", r.Answer)
+	}
+}
+
 // A locally-handled command spends no tokens and returns an empty result while
 // reporting success. Parsing must surface that faithfully rather than treating
 // it as a failure — deciding what it means is the spec's job, not the parser's.

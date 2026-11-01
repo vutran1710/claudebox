@@ -19,14 +19,6 @@ import (
 // this was measured — so priming follows the same contract as a query. The
 // caller says how long it will wait and gets a job if that is not long enough.
 
-// unknownCommand is how Claude Code answers a slash command it does not have.
-//
-// It reports is_error: false with turns 0, so nothing about the exit code or
-// the error flag distinguishes a skill that ran from one that does not exist.
-// This string is the only signal, which is why priming looks for it rather
-// than trusting success.
-const unknownCommand = "Unknown command:"
-
 // skillRef is what a caller may name. Colons are allowed because a skill from
 // a plugin is addressed as `plugin:skill`.
 var skillRef = regexp.MustCompile(`^[a-z0-9][a-z0-9:_-]{0,63}$`)
@@ -92,6 +84,13 @@ func (s *Server) runSkills(ctx context.Context, sess *store.Session, skills []st
 	turns := sess.Turns
 
 	for _, name := range skills {
+		// Before the turn, not after it: a skill that is not here cannot be
+		// recognised from the answer, and asking anyway costs real API time.
+		if !claude.Installed(s.Home, sess.Dir, name) {
+			msg := fmt.Sprintf("skill %q is not installed on this box — `cbx export skills` lists what is", name)
+			s.Store.FinishJob(id, store.Failed, transcript.String(), msg)
+			return primingView{Status: store.Failed, Invoked: invoked, Error: msg}
+		}
 		res, err := s.Claude.Query(ctx, claude.Request{
 			Dir:            sess.Dir,
 			Prompt:         "/" + name,
@@ -108,14 +107,6 @@ func (s *Server) runSkills(ctx context.Context, sess *store.Session, skills []st
 		if err != nil {
 			s.Store.FinishJob(id, store.Failed, transcript.String(), err.Error())
 			return primingView{Status: store.Failed, Invoked: invoked, Error: err.Error()}
-		}
-		// The measured trap: an unknown skill answers with this and reports
-		// success. Without the check, a session would be created claiming to
-		// know something nothing ever taught it.
-		if strings.HasPrefix(strings.TrimSpace(res.Answer), unknownCommand) {
-			msg := fmt.Sprintf("skill %q is not installed on this box — `cbx export skills` lists what is", name)
-			s.Store.FinishJob(id, store.Failed, transcript.String(), msg)
-			return primingView{Status: store.Failed, Invoked: invoked, Error: msg}
 		}
 		if res.SessionID != "" && res.SessionID != sess.ClaudeSessionID {
 			msg := fmt.Sprintf("skill %q ran against conversation %s instead of %s", name, res.SessionID, sess.ClaudeSessionID)

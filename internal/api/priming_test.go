@@ -35,6 +35,8 @@ func TestCreateWithSkillsInvokesThemInOrder(t *testing.T) {
 		return []byte(result(id, "loaded "+prompt, 1)), nil
 	})
 
+	h.install("inline", "testing")
+
 	w := h.do("POST", "/sessions", map[string]any{
 		"name": "primed", "skills": []string{"inline", "testing"}, "respond_within": "30s",
 	})
@@ -50,17 +52,21 @@ func TestCreateWithSkillsInvokesThemInOrder(t *testing.T) {
 	}
 }
 
-// The measured trap: an unknown skill answers "Unknown command:" with
-// is_error false and turns 0. Nothing about the exit code says it failed.
+// A skill the box does not have is caught before a turn is spent on it. The
+// answer cannot be used for this: Claude Code 2.1.236 prefixed "Unknown
+// command:", 2.1.286 lets the model reply in its own words, and neither
+// version sets is_error.
 func TestAnUnknownSkillIsReportedNotSwallowed(t *testing.T) {
+	var calls atomic.Int64
 	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+		calls.Add(1)
 		id := ""
 		for i, a := range args {
 			if a == "--session-id" || a == "--resume" {
 				id = args[i+1]
 			}
 		}
-		return []byte(result(id, "Unknown command: /nope", 0)), nil
+		return []byte(result(id, "loaded", 1)), nil
 	})
 
 	w := h.do("POST", "/sessions", map[string]any{
@@ -77,24 +83,24 @@ func TestAnUnknownSkillIsReportedNotSwallowed(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(priming["error"]), "not installed") {
 		t.Errorf("error does not say what happened: %v", priming["error"])
 	}
+	if calls.Load() != 0 {
+		t.Errorf("asked Claude %d times about a skill that is not here", calls.Load())
+	}
 }
 
 func TestPrimingStopsAtTheFirstMissingSkill(t *testing.T) {
 	var calls atomic.Int64
 	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
-		n := calls.Add(1)
-		prompt := args[len(args)-1]
+		calls.Add(1)
 		id := ""
 		for i, a := range args {
 			if a == "--session-id" || a == "--resume" {
 				id = args[i+1]
 			}
 		}
-		if n == 2 {
-			return []byte(result(id, "Unknown command: "+prompt, 0)), nil
-		}
 		return []byte(result(id, "loaded", 1)), nil
 	})
+	h.install("one", "three")
 
 	w := h.do("POST", "/sessions", map[string]any{
 		"name": "partial", "skills": []string{"one", "missing", "three"}, "respond_within": "30s",
@@ -105,8 +111,8 @@ func TestPrimingStopsAtTheFirstMissingSkill(t *testing.T) {
 	}
 	// A session primed with half of what was asked for is worse than one that
 	// says which half failed.
-	if calls.Load() != 2 {
-		t.Errorf("ran %d skills, want 2 — it should stop at the missing one", calls.Load())
+	if calls.Load() != 1 {
+		t.Errorf("ran %d skills, want 1 — it stops at the missing one without asking about it", calls.Load())
 	}
 	invoked, _ := priming["invoked"].([]any)
 	if len(invoked) != 1 || invoked[0] != "one" {
@@ -136,6 +142,7 @@ func TestPrimingThatOutrunsTheWindowReturnsAJob(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	h := answering(t, stalling("uuid-slow", "eventually", release))
+	h.install("inline")
 
 	w := h.do("POST", "/sessions", map[string]any{
 		"name": "slow", "skills": []string{"inline"}, "respond_within": "100ms",
@@ -181,6 +188,8 @@ func TestPrimingAdvancesTurnsSoTheNextQueryResumes(t *testing.T) {
 		}
 		return []byte(result(id, "loaded", 1)), nil
 	})
+	h.install("inline")
+
 	h.do("POST", "/sessions", map[string]any{
 		"name": "turns", "skills": []string{"inline"}, "respond_within": "30s",
 	})
@@ -198,6 +207,7 @@ func TestAQueryDuringPrimingIsRefused(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	h := answering(t, stalling("uuid-slow", "later", release))
+	h.install("inline")
 
 	w := h.do("POST", "/sessions", map[string]any{
 		"name": "still-priming", "skills": []string{"inline"}, "respond_within": "50ms",
@@ -233,7 +243,7 @@ func TestASessionSurvivesFailedPriming(t *testing.T) {
 				id = args[i+1]
 			}
 		}
-		return []byte(result(id, "Unknown command: /nope", 0)), nil
+		return []byte(result(id, "loaded", 1)), nil
 	})
 	h.do("POST", "/sessions", map[string]any{
 		"name": "half", "skills": []string{"nope"}, "respond_within": "30s",

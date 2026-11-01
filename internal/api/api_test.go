@@ -83,6 +83,21 @@ func answering(t *testing.T, run claude.Runner) *harness {
 	return &harness{Server: s, t: t, dir: home}
 }
 
+// install puts a skill where priming looks for it. Priming refuses a skill
+// that is not on the box, so a test that primes has to put one there.
+func (h *harness) install(names ...string) {
+	h.t.Helper()
+	for _, n := range names {
+		dir := filepath.Join(h.dir, ".claude", "skills", n)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			h.t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# "+n), 0o600); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+}
+
 // result is a captured Claude Code 2.1.236 payload with fields substituted.
 func result(sessionID, answer string, turns int) string {
 	b, _ := json.Marshal(map[string]any{

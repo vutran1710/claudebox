@@ -241,9 +241,10 @@ func TestCancelledQueryLeavesAResumableSession(t *testing.T) {
 }
 
 // Priming a session with a skill that does not exist must not look like
-// success. Measured against Claude Code 2.1.236: an unknown slash command
-// answers "Unknown command: ..." with is_error false and turns 0, so nothing
-// about the exit code distinguishes it from a skill that ran.
+// success. Nothing in the CLI's output says it failed: 2.1.236 answered
+// "Unknown command: ..." and 2.1.286 lets the model reply in its own words,
+// both with is_error false. This runs against the real CLI, so it is the one
+// test that fails when that output changes shape again.
 func TestPrimingWithAnUnknownSkillIsReported(t *testing.T) {
 	ts, st, root := liveAPI(t)
 	name := "e2e-unknown-skill"

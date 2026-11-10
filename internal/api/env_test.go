@@ -2,11 +2,12 @@ package api
 
 // A session's env: set once at creation from the names the caller's role permits, carried
 // to every turn's claude process, and shown by name only; a query adds its role's per-turn
-// names for that turn alone. Storage is store_test.go's.
+// names for that turn alone, on top of the box's own env from its config. Storage is store_test.go's.
 
 import (
 	"context"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -118,5 +119,60 @@ func TestAPerTurnValueDoesNotOutliveItsTurn(t *testing.T) {
 
 	if len(seen) != 2 || !slices.Equal(seen[1], []string{"KOIDRA_ORG_ID=12"}) {
 		t.Errorf("turns ran with %q, want the second without KOIDRA_RUN_KEY", seen)
+	}
+}
+
+func withBoxEnv(t *testing.T, h *harness, env string) {
+	t.Helper()
+	if err := os.WriteFile(h.ConfigPath, []byte(testConfig+"env:\n"+env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestATurnsEnvLayersTheBoxTheSessionAndTheTurn(t *testing.T) {
+	cases := []struct {
+		name    string
+		box     string
+		session map[string]string
+		turn    map[string]string
+		want    []string
+	}{
+		{"only the box sets it", "  KOIDRA_API_URL: http://127.0.0.1:8017\n", map[string]string{"KOIDRA_ORG_ID": "2"}, nil,
+			[]string{"KOIDRA_API_URL=http://127.0.0.1:8017", "KOIDRA_ORG_ID=2"}},
+		{"the session's value wins over the box's", "  KOIDRA_ORG_ID: \"9\"\n", map[string]string{"KOIDRA_ORG_ID": "2"}, nil,
+			[]string{"KOIDRA_ORG_ID=2"}},
+		{"a per-turn name is added on top of both", "  KOIDRA_API_URL: http://127.0.0.1:8017\n", map[string]string{"KOIDRA_ORG_ID": "2"}, map[string]string{"KOIDRA_RUN_KEY": "rk_1"},
+			[]string{"KOIDRA_API_URL=http://127.0.0.1:8017", "KOIDRA_ORG_ID=2", "KOIDRA_RUN_KEY=rk_1"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var seen [][]string
+			h := answering(t, capturingEnv(&seen))
+			withBoxEnv(t, h, c.box)
+			h.do("POST", "/sessions", map[string]any{"name": "env-layers", "env": c.session})
+
+			h.do("POST", "/sessions/env-layers/query", map[string]any{"prompt": "hi", "respond_within": "10s", "env": c.turn})
+
+			if len(seen) != 1 || !slices.Equal(seen[0], c.want) {
+				t.Errorf("turn ran with %q, want %q", seen, c.want)
+			}
+		})
+	}
+}
+
+func TestTheBoxsEnvIsReadEachTurn(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var seen [][]string
+	h := answering(t, capturingEnv(&seen))
+	withBoxEnv(t, h, "  KOIDRA_API_URL: http://first\n")
+	h.do("POST", "/sessions", map[string]any{"name": "env-reread"})
+	h.do("POST", "/sessions/env-reread/query", map[string]any{"prompt": "hi", "respond_within": "10s"})
+
+	withBoxEnv(t, h, "  KOIDRA_API_URL: http://second\n")
+	h.do("POST", "/sessions/env-reread/query", map[string]any{"prompt": "again", "respond_within": "10s"})
+
+	if len(seen) != 2 || !slices.Equal(seen[1], []string{"KOIDRA_API_URL=http://second"}) {
+		t.Errorf("turns ran with %q, want the second to read the edited config", seen)
 	}
 }

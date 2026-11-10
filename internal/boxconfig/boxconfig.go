@@ -79,6 +79,9 @@ type Config struct {
 	// before the rename keeps working rather than locking every caller out.
 	Permissions map[string]Role `yaml:"permissions" json:"-"`
 	Commands    []Command       `yaml:"commands" json:"commands"`
+	// Env is set on every turn on this box, under the session's own, such as the
+	// API the tools read. Re-read each turn, like the rest of this file.
+	Env map[string]string `yaml:"env" json:"env,omitempty"`
 
 	// path is where this was read from, so an error names the file somebody
 	// has to edit rather than the one they probably have not got.

@@ -91,6 +91,11 @@ func (s *Server) runSkills(ctx context.Context, sess *store.Session, skills []st
 			s.Store.FinishJob(id, store.Failed, transcript.String(), msg)
 			return primingView{Status: store.Failed, Invoked: invoked, Error: msg}
 		}
+		env, err := s.turnEnv(sess, nil)
+		if err != nil {
+			s.Store.FinishJob(id, store.Failed, transcript.String(), err.Error())
+			return primingView{Status: store.Failed, Invoked: invoked, Error: err.Error()}
+		}
 		res, err := s.Claude.Query(ctx, claude.Request{
 			Dir:            sess.Dir,
 			Prompt:         "/" + name,
@@ -98,7 +103,7 @@ func (s *Server) runSkills(ctx context.Context, sess *store.Session, skills []st
 			SystemPrompt:   sess.SystemPrompt,
 			PermissionMode: sess.PermissionMode,
 			Model:          sess.Model,
-			Env:            sess.Env,
+			Env:            env,
 			Effort:         sess.Effort,
 			Fresh:          turns == 0,
 		})

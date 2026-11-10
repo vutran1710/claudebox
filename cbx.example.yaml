@@ -42,6 +42,11 @@ version: 1
 # commands with nobody present; under bypassPermissions the same rules are
 # ignored entirely, which is why no session ever runs in it.
 
+# Set on every turn on this box, under each session's own env. The API a box's
+# tools read belongs here: one box reads one backend.
+# env:
+#   API_URL: https://api.example.com
+
 roles:
   # The everyday role: a session works inside its own directory and cannot
   # reach anything that shapes other sessions.

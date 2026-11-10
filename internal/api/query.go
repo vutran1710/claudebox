@@ -128,12 +128,11 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// The session's names keep the session's values: a turn adds, never replaces.
-	env := maps.Clone(req.Env)
-	if env == nil {
-		env = map[string]string{}
+	env, err := s.turnEnv(sess, req.Env)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	maps.Copy(env, sess.Env)
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		SettingsPath:   settings,
@@ -209,6 +208,11 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	env, err := s.turnEnv(sess, nil)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		SettingsPath:   settings,
@@ -217,7 +221,7 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
-		Env:            sess.Env,
+		Env:            env,
 		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Command, declared)
@@ -364,3 +368,17 @@ func (s *Server) cancel(id string) bool {
 }
 
 func newJobID() string { return "j_" + uuid.NewString() }
+
+// turnEnv is what one turn's process gets: the box's env, read from its config
+// each turn, then the query's env, then the session's own, which win.
+func (s *Server) turnEnv(sess *store.Session, turn map[string]string) (map[string]string, error) {
+	cfg, err := boxconfig.Load(s.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	env := map[string]string{}
+	maps.Copy(env, cfg.Env)
+	maps.Copy(env, turn)
+	maps.Copy(env, sess.Env)
+	return env, nil
+}

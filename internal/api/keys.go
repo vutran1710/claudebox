@@ -49,6 +49,14 @@ func caller(r *http.Request) *permit {
 	return p
 }
 
+// role is this caller's role, or none at all for a caller without one.
+func (p *permit) role() boxconfig.Role {
+	if p == nil || p.Role == nil {
+		return boxconfig.Role{}
+	}
+	return *p.Role
+}
+
 // Mode is the Claude Code permission mode sessions run under.
 //
 // The same for every caller. A role governs what a session may touch, through

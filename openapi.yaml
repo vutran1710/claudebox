@@ -678,7 +678,14 @@ components:
       properties:
         prompt: { type: string }
         env:
-          description: Refused with 400. A session's env is fixed when it is created.
+          type: object
+          description: |
+            Set on this turn's process only, such as a credential that expires
+            before the session does. Each name must be one the calling key's role
+            lists under `turn_env`; the session's own env is fixed at creation and
+            keeps its values.
+          additionalProperties: { type: string }
+          example: { KOIDRA_RUN_KEY: "rk_…" }
         artifacts:
           type: array
           description: |

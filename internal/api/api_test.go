@@ -33,6 +33,7 @@ roles:
   tester:
     deny: []
     env: [KOIDRA_ORG_ID, KOIDRA_API_URL]
+    turn_env: [KOIDRA_RUN_KEY]
   restricted:
     deny: ["Write(//**)"]
 commands:

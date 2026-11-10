@@ -77,6 +77,19 @@ var sessionName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
+// refusedEnv answers 400 and reports true when env names a variable outside
+// permitted, or a value holding a newline or NUL.
+func refusedEnv(w http.ResponseWriter, env map[string]string, permitted []string) bool {
+	for name, value := range env {
+		if !envName.MatchString(name) || !slices.Contains(permitted, name) || strings.ContainsAny(value, "\x00\n\r") {
+			fail(w, http.StatusBadRequest, fmt.Sprintf(
+				"env %q is not one this key's role may set here, or its value holds a newline or NUL", name))
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	var req createSessionRequest
 	if err := decode(r, &req); err != nil {
@@ -108,16 +121,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	var permitted []string
-	if p := caller(r); p != nil && p.Role != nil {
-		permitted = p.Role.SessionEnv
-	}
-	for name, value := range req.Env {
-		if !envName.MatchString(name) || !slices.Contains(permitted, name) || strings.ContainsAny(value, "\x00\n\r") {
-			fail(w, http.StatusBadRequest, fmt.Sprintf(
-				"env %q is not one this key's role may set, or its value holds a newline or NUL", name))
-			return
-		}
+	if refusedEnv(w, req.Env, caller(r).role().SessionEnv) {
+		return
 	}
 	for _, name := range req.Skills {
 		if !ValidSkillRef(name) {

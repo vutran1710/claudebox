@@ -33,6 +33,7 @@ roles:
   tester:
     deny: []
     session_env: [TENANT_ID, API_URL]
+    query_env: [USER_KEY]
   restricted:
     deny: ["Write(//**)"]
 commands:

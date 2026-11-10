@@ -1,7 +1,8 @@
 package api
 
 // A session's env: set once at creation from the names the caller's role permits, carried
-// to every turn's claude process, and shown by name only. Storage is store_test.go's.
+// to every turn's claude process, and shown by name only; a query adds its role's query_env
+// names for that turn alone. Storage is store_test.go's.
 
 import (
 	"context"
@@ -75,17 +76,47 @@ func TestASessionShowsItsEnvNamesNeverValues(t *testing.T) {
 	}
 }
 
-func TestAQueryCannotChangeTheEnv(t *testing.T) {
+func TestAQuerySetsOnlyItsRolesQueryEnvNames(t *testing.T) {
+	cases := []struct {
+		name     string
+		turn     map[string]string
+		wantCode int
+		wantEnv  []string
+	}{
+		{"a name the role lists under query_env", map[string]string{"USER_KEY": "uk_1"}, http.StatusOK, []string{"TENANT_ID=12", "USER_KEY=uk_1"}},
+		{"a name fixed when the session was created", map[string]string{"TENANT_ID": "13"}, http.StatusBadRequest, nil},
+		{"a name not under query_env", map[string]string{"SECRET_TOKEN": "x"}, http.StatusBadRequest, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var seen [][]string
+			h := answering(t, capturingEnv(&seen))
+			h.do("POST", "/sessions", map[string]any{"name": "env-turn", "env": map[string]string{"TENANT_ID": "12"}})
+
+			w := h.do("POST", "/sessions/env-turn/query", map[string]any{"prompt": "hi", "respond_within": "10s", "env": c.turn})
+
+			sess, _ := h.Store.Get("env-turn")
+			if w.Code != c.wantCode || (c.wantEnv != nil && (len(seen) != 1 || !slices.Equal(seen[0], c.wantEnv))) || (c.wantEnv == nil && len(seen) != 0) {
+				t.Errorf("got %d with turns %q, want %d with %q", w.Code, seen, c.wantCode, c.wantEnv)
+			}
+			if sess == nil || len(sess.Env) != 1 || sess.Env["TENANT_ID"] != "12" {
+				t.Errorf("the session's env became %v", sess)
+			}
+		})
+	}
+}
+
+func TestAQueryEnvValueDoesNotOutliveItsTurn(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var seen [][]string
 	h := answering(t, capturingEnv(&seen))
-	h.do("POST", "/sessions", map[string]any{"name": "env-fixed", "env": map[string]string{"TENANT_ID": "12"}})
+	h.do("POST", "/sessions", map[string]any{"name": "env-once", "env": map[string]string{"TENANT_ID": "12"}})
+	h.do("POST", "/sessions/env-once/query", map[string]any{"prompt": "hi", "respond_within": "10s", "env": map[string]string{"USER_KEY": "uk_1"}})
 
-	w := h.do("POST", "/sessions/env-fixed/query", map[string]any{
-		"prompt": "hi", "respond_within": "10s", "env": map[string]string{"TENANT_ID": "13"},
-	})
+	h.do("POST", "/sessions/env-once/query", map[string]any{"prompt": "again", "respond_within": "10s"})
 
-	if w.Code != http.StatusBadRequest || len(seen) != 0 {
-		t.Errorf("got %d with %d turns run, want 400 and none", w.Code, len(seen))
+	if len(seen) != 2 || !slices.Equal(seen[1], []string{"TENANT_ID=12"}) {
+		t.Errorf("turns ran with %q, want the second without USER_KEY", seen)
 	}
 }

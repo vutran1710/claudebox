@@ -59,6 +59,9 @@ type Role struct {
 	// SessionEnv names the variables this role's keys may set on a session they
 	// create. Absent permits none.
 	SessionEnv []string `yaml:"session_env" json:"session_env,omitempty"`
+	// QueryEnv names the variables a query may set for its own turn only, such
+	// as a credential that expires before the session does. Absent permits none.
+	QueryEnv []string `yaml:"query_env" json:"query_env,omitempty"`
 }
 
 type Command struct {

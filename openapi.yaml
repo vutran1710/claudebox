@@ -550,6 +550,15 @@ components:
             — which it re-reads every turn — is what carries this.
           items: { type: string }
           example: [domains/billing.md, clients/northwind.md]
+        env:
+          type: object
+          description: |
+            Set on every turn's process, so the MCP servers Claude Code starts
+            read it. Fixed at creation. Each name must be one the calling key's
+            role lists under `env` in the box's config; anything else is refused,
+            as is a value holding a newline or NUL.
+          additionalProperties: { type: string }
+          example: { TENANT_ID: "12", API_URL: "https://api.example.com" }
         skills:
           type: array
           description: |
@@ -631,6 +640,10 @@ components:
           type: array
           description: The knowledge files this session was built with.
           items: { type: string }
+        env:
+          type: array
+          description: The env names this session was given. Never their values.
+          items: { type: string }
         turns:
           type: integer
           description: Turns that reached the model. At 0 the conversation does not exist yet.
@@ -664,6 +677,8 @@ components:
       required: [prompt, respond_within]
       properties:
         prompt: { type: string }
+        env:
+          description: Refused with 400. A session's env is fixed when it is created.
         artifacts:
           type: array
           description: |

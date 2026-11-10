@@ -32,6 +32,7 @@ version: 1
 roles:
   tester:
     deny: []
+    session_env: [TENANT_ID, API_URL]
   restricted:
     deny: ["Write(//**)"]
 commands:
@@ -151,8 +152,9 @@ func (h *harness) headlessSession(name, sessionID string, turns int) store.Sessi
 }
 
 func answers(sessionID, answer string) claude.Runner {
-	return func(context.Context, string, []string) ([]byte, error) {
+	return func(context.Context, string, []string, []string) ([]byte, error) {
 		return []byte(result(sessionID, answer, 1)), nil
+
 	}
 }
 
@@ -418,7 +420,7 @@ func TestSystemPromptIsStoredAtCreation(t *testing.T) {
 
 func TestTheSystemPromptReachesEveryQuery(t *testing.T) {
 	var seen string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Join(args, " ")
 		id := ""
 		for i, a := range args {
@@ -427,6 +429,7 @@ func TestTheSystemPromptReachesEveryQuery(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "ok", 1)), nil
+
 	})
 	h.do("POST", "/sessions", map[string]any{"name": "spq", "system_prompt": "be terse"})
 	h.do("POST", "/sessions/spq/query", map[string]any{"prompt": "hi", "respond_within": "10s"})
@@ -512,9 +515,10 @@ func TestCreateRejectsAModelThatWouldBeReadAsAFlag(t *testing.T) {
 
 func TestTheSessionsModelAndEffortReachTheQuery(t *testing.T) {
 	var seen string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Join(args, " ")
 		return []byte(result("uuid-m", "ok", 1)), nil
+
 	})
 	sess := h.headlessSession("mq", "uuid-m", 1)
 	sess.Model, sess.Effort = "sonnet", claude.High

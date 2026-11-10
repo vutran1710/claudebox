@@ -37,7 +37,7 @@ func produced(t *testing.T, name string, files map[string]string) (*harness, sto
 	t.Helper()
 	var h *harness
 	var dir string
-	h = answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h = answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		writing(files)(t, h, dir)
 		id := ""
 		for i, a := range args {
@@ -46,6 +46,7 @@ func produced(t *testing.T, name string, files map[string]string) (*harness, sto
 			}
 		}
 		return []byte(result(id, "written", 1)), nil
+
 	})
 	sess := h.headlessSession(name, "uuid-"+name, 1)
 	dir = sess.Dir

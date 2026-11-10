@@ -56,6 +56,9 @@ type Role struct {
 	// unfinished role should not be an unrestricted one. `deny: []` denies
 	// nothing, and has to be written on purpose.
 	Deny []string `yaml:"deny" json:"deny"`
+	// SessionEnv names the variables this role's keys may set on a session they
+	// create. Absent permits none.
+	SessionEnv []string `yaml:"session_env" json:"session_env,omitempty"`
 }
 
 type Command struct {

@@ -51,6 +51,9 @@ func (rw *respondWithin) UnmarshalJSON(b []byte) error {
 
 type queryRequest struct {
 	Prompt string `json:"prompt"`
+	// Env is accepted only to be refused: it is fixed when the session is
+	// created, and a query that names one expects something it would not get.
+	Env json.RawMessage `json:"env"`
 	// Artifacts are the files this query is expected to produce. Only these
 	// become fetchable; everything else in the session directory stays
 	// private, which is the whole point of declaring them.
@@ -98,6 +101,10 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
+	if len(req.Env) > 0 {
+		fail(w, http.StatusBadRequest, "env is fixed when the session is created")
+		return
+	}
 	// Checked before the turn runs, so a bad level costs a round trip rather
 	// than a session's worth of work at the wrong effort.
 	if !claude.ValidEffort(req.Effort) {
@@ -129,6 +136,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
+		Env:            sess.Env,
 		Effort:         cmp.Or(req.Effort, sess.Effort),
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Prompt, declared)
@@ -203,6 +211,7 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
+		Env:            sess.Env,
 		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Command, declared)

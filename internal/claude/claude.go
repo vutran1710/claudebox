@@ -17,10 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -109,6 +111,9 @@ type Request struct {
 	// Fresh creates the conversation rather than resuming it. True for the
 	// first turn, and again when a resume finds no conversation to continue.
 	Fresh bool
+	// Env is the session's, fixed at creation. Claude Code starts its MCP
+	// servers as children, so this is how a tool learns who the run is for.
+	Env map[string]string
 }
 
 // Result is what print mode reports back.
@@ -162,7 +167,7 @@ const noConversation = "No conversation found with session ID"
 
 // Runner executes claude and returns its combined output. Injected so the API
 // can be tested without Claude installed.
-type Runner func(ctx context.Context, dir string, args []string) ([]byte, error)
+type Runner func(ctx context.Context, dir string, args []string, env []string) ([]byte, error)
 
 type Client struct {
 	run Runner
@@ -180,10 +185,11 @@ func (c *Client) WithRunner(r Runner) *Client { c.run = r; return c }
 // parent leaves its children running, writing to a transcript nothing is
 // tracking. Cancel sends SIGTERM to the group and WaitDelay escalates, so a
 // child that ignores it still goes.
-func shellRun(ctx context.Context, dir string, args []string) ([]byte, error) {
+func shellRun(ctx context.Context, dir string, args []string, env []string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "IS_SANDBOX=1")
+	// Last, so a session's entry can never undo the box's own.
+	cmd.Env = append(append(os.Environ(), env...), "IS_SANDBOX=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -199,10 +205,14 @@ func shellRun(ctx context.Context, dir string, args []string) ([]byte, error) {
 // a turn and recording that it happened, leaving a row that believes in a
 // conversation nothing created.
 func (c *Client) Query(ctx context.Context, r Request) (*Result, error) {
-	out, err := c.run(ctx, r.Dir, Args(r))
+	env := make([]string, 0, len(r.Env))
+	for _, name := range slices.Sorted(maps.Keys(r.Env)) {
+		env = append(env, name+"="+r.Env[name])
+	}
+	out, err := c.run(ctx, r.Dir, Args(r), env)
 	if err != nil && !r.Fresh && strings.Contains(string(out), noConversation) {
 		r.Fresh = true
-		out, err = c.run(ctx, r.Dir, Args(r))
+		out, err = c.run(ctx, r.Dir, Args(r), env)
 	}
 	if err != nil {
 		if ctx.Err() != nil {

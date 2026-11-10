@@ -12,6 +12,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -54,6 +55,8 @@ type Session struct {
 	// Context names the knowledge files this session was built with, kept so
 	// "what did this report know" has an answer after the fact.
 	Context []string
+	// Env is set on every turn's process, fixed at creation like Model.
+	Env map[string]string
 	// Turns selects the flag. At 0 the conversation does not exist yet and the
 	// first query must create it with --session-id.
 	Turns int
@@ -146,24 +149,28 @@ func (s *Store) Put(sess Session) error {
 	// Stored newline-joined: it is a list a person reads in `cbx export db`,
 	// not something queried by element.
 	ctx := strings.Join(sess.Context, "\n")
+	env, err := json.Marshal(sess.Env)
+	if err != nil {
+		return fmt.Errorf("record session %q: %w", sess.Name, err)
+	}
 	kind := sess.Kind
 	if kind == "" {
 		// cbx new does not name a kind, and everything it creates is a tmux
 		// session. Defaulting here keeps that caller unchanged.
 		kind = Interactive
 	}
-	_, err := s.db.Exec(
+	_, err = s.db.Exec(
 		`INSERT INTO sessions (name, dir, repo, rc_url, created_at,
-		   kind, claude_session_id, system_prompt, permission_mode, model, effort, context, turns)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+		   kind, claude_session_id, system_prompt, permission_mode, model, effort, context, env, turns)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT(name) DO UPDATE SET dir=excluded.dir, repo=excluded.repo,
 		   rc_url=excluded.rc_url, created_at=excluded.created_at, kind=excluded.kind,
 		   claude_session_id=excluded.claude_session_id, system_prompt=excluded.system_prompt,
 		   permission_mode=excluded.permission_mode, model=excluded.model,
-		   effort=excluded.effort, context=excluded.context, turns=excluded.turns`,
+		   effort=excluded.effort, context=excluded.context, env=excluded.env, turns=excluded.turns`,
 		sess.Name, sess.Dir, sess.Repo, sess.RCURL, created.Unix(),
 		kind, sess.ClaudeSessionID, sess.SystemPrompt, sess.PermissionMode,
-		sess.Model, sess.Effort, ctx, sess.Turns)
+		sess.Model, sess.Effort, ctx, string(env), sess.Turns)
 	if err != nil {
 		return fmt.Errorf("record session %q: %w", sess.Name, err)
 	}
@@ -175,11 +182,11 @@ func (s *Store) Put(sess Session) error {
 func (s *Store) Get(name string) (*Session, error) {
 	var sess Session
 	var created int64
-	var ctx string
+	var ctx, env string
 	err := s.db.QueryRow(
-		`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, context, turns FROM sessions WHERE name = ?`, name).
+		`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, context, env, turns FROM sessions WHERE name = ?`, name).
 		Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode,
-			&sess.Model, &sess.Effort, &ctx, &sess.Turns)
+			&sess.Model, &sess.Effort, &ctx, &env, &sess.Turns)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -188,6 +195,9 @@ func (s *Store) Get(name string) (*Session, error) {
 	}
 	sess.CreatedAt = time.Unix(created, 0)
 	sess.Context = splitContext(ctx)
+	if err := json.Unmarshal([]byte(env), &sess.Env); err != nil && env != "" {
+		return nil, fmt.Errorf("read session %q env: %w", name, err)
+	}
 	return &sess, nil
 }
 
@@ -202,7 +212,7 @@ func splitContext(raw string) []string {
 
 // List returns every recorded session, oldest first.
 func (s *Store) List() ([]Session, error) {
-	rows, err := s.db.Query(`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, context, turns FROM sessions ORDER BY created_at`)
+	rows, err := s.db.Query(`SELECT name, dir, repo, rc_url, created_at, kind, claude_session_id, system_prompt, permission_mode, model, effort, context, env, turns FROM sessions ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -212,13 +222,16 @@ func (s *Store) List() ([]Session, error) {
 	for rows.Next() {
 		var sess Session
 		var created int64
-		var ctx string
+		var ctx, env string
 		if err := rows.Scan(&sess.Name, &sess.Dir, &sess.Repo, &sess.RCURL, &created, &sess.Kind, &sess.ClaudeSessionID, &sess.SystemPrompt, &sess.PermissionMode,
-			&sess.Model, &sess.Effort, &ctx, &sess.Turns); err != nil {
+			&sess.Model, &sess.Effort, &ctx, &env, &sess.Turns); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.CreatedAt = time.Unix(created, 0)
 		sess.Context = splitContext(ctx)
+		if err := json.Unmarshal([]byte(env), &sess.Env); err != nil && env != "" {
+			return nil, fmt.Errorf("read session %q env: %w", sess.Name, err)
+		}
 		out = append(out, sess)
 	}
 	return out, rows.Err()

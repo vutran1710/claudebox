@@ -17,13 +17,14 @@ import (
 
 func TestCreateWithSkillsInvokesThemInOrder(t *testing.T) {
 	var got []string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		prompt := args[len(args)-1]
 		got = append(got, prompt)
 		return []byte(result("uuid-p", "loaded "+prompt, 1)), nil
+
 	})
 	// The created session allocates its own uuid, so the fake must echo it.
-	h.Claude = h.Claude.WithRunner(func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h.Claude = h.Claude.WithRunner(func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		prompt := args[len(args)-1]
 		got = append(got, prompt)
 		id := ""
@@ -33,6 +34,7 @@ func TestCreateWithSkillsInvokesThemInOrder(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "loaded "+prompt, 1)), nil
+
 	})
 
 	h.install("inline", "testing")
@@ -58,7 +60,7 @@ func TestCreateWithSkillsInvokesThemInOrder(t *testing.T) {
 // version sets is_error.
 func TestAnUnknownSkillIsReportedNotSwallowed(t *testing.T) {
 	var calls atomic.Int64
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		calls.Add(1)
 		id := ""
 		for i, a := range args {
@@ -67,6 +69,7 @@ func TestAnUnknownSkillIsReportedNotSwallowed(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "loaded", 1)), nil
+
 	})
 
 	w := h.do("POST", "/sessions", map[string]any{
@@ -90,7 +93,7 @@ func TestAnUnknownSkillIsReportedNotSwallowed(t *testing.T) {
 
 func TestPrimingStopsAtTheFirstMissingSkill(t *testing.T) {
 	var calls atomic.Int64
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		calls.Add(1)
 		id := ""
 		for i, a := range args {
@@ -99,6 +102,7 @@ func TestPrimingStopsAtTheFirstMissingSkill(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "loaded", 1)), nil
+
 	})
 	h.install("one", "three")
 
@@ -179,7 +183,7 @@ func TestPluginSkillsAreAccepted(t *testing.T) {
 }
 
 func TestPrimingAdvancesTurnsSoTheNextQueryResumes(t *testing.T) {
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		id := ""
 		for i, a := range args {
 			if a == "--session-id" || a == "--resume" {
@@ -187,6 +191,7 @@ func TestPrimingAdvancesTurnsSoTheNextQueryResumes(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "loaded", 1)), nil
+
 	})
 	h.install("inline")
 
@@ -236,7 +241,7 @@ func TestAQueryDuringPrimingIsRefused(t *testing.T) {
 // A session created with skills that fail is still a session. The 201 is
 // honest about both halves: it exists, and priming did not happen.
 func TestASessionSurvivesFailedPriming(t *testing.T) {
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		id := ""
 		for i, a := range args {
 			if a == "--session-id" || a == "--resume" {
@@ -244,6 +249,7 @@ func TestASessionSurvivesFailedPriming(t *testing.T) {
 			}
 		}
 		return []byte(result(id, "loaded", 1)), nil
+
 	})
 	h.do("POST", "/sessions", map[string]any{
 		"name": "half", "skills": []string{"nope"}, "respond_within": "30s",

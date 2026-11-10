@@ -98,6 +98,7 @@ func (s *Server) runSkills(ctx context.Context, sess *store.Session, skills []st
 			SystemPrompt:   sess.SystemPrompt,
 			PermissionMode: sess.PermissionMode,
 			Model:          sess.Model,
+			Env:            sess.Env,
 			Effort:         sess.Effort,
 			Fresh:          turns == 0,
 		})

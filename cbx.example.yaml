@@ -46,6 +46,9 @@ roles:
   # The everyday role: a session works inside its own directory and cannot
   # reach anything that shapes other sessions.
   reporter:
+    # The env names this role's keys may set on a session; absent permits none.
+    # These are how a run tells its tools who it is for and which API to read.
+    env: [KOIDRA_ORG_ID, KOIDRA_API_URL]
     deny:
       # The guide and skills are read by every future session, so one able to
       # rewrite them could change what every later session believes.

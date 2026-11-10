@@ -20,13 +20,14 @@ import (
 
 // stalling returns a runner that blocks until release is closed, then answers.
 func stalling(sessionID, answer string, release <-chan struct{}) claude.Runner {
-	return func(ctx context.Context, _ string, _ []string) ([]byte, error) {
+	return func(ctx context.Context, _ string, _ []string, _ []string) ([]byte, error) {
 		select {
 		case <-release:
 			return []byte(result(sessionID, answer, 1)), nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+
 	}
 }
 
@@ -282,9 +283,10 @@ func TestDeletingASessionCancelsItsQuery(t *testing.T) {
 
 func TestTheFirstQueryCreatesTheConversation(t *testing.T) {
 	var seen []string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Split(strings.Join(args, " "), " ")
 		return []byte(result("uuid-new", "hi", 1)), nil
+
 	})
 	h.headlessSession("fresh", "uuid-new", 0)
 
@@ -309,8 +311,9 @@ func TestATurnThatReachedTheModelAdvancesTurns(t *testing.T) {
 func TestALocallyHandledTurnDoesNotAdvanceTurns(t *testing.T) {
 	// turns 0 and an empty answer: handled locally, no conversation created.
 	// Counting it would make the next query resume one that is not there.
-	h := answering(t, func(context.Context, string, []string) ([]byte, error) {
+	h := answering(t, func(context.Context, string, []string, []string) ([]byte, error) {
 		return []byte(result("uuid-q", "", 0)), nil
+
 	})
 	h.headlessSession("q", "uuid-q", 0)
 
@@ -324,8 +327,9 @@ func TestALocallyHandledTurnDoesNotAdvanceTurns(t *testing.T) {
 func TestAForkedSessionIdIsReportedNotSwallowed(t *testing.T) {
 	// Measured: a locally-handled command reports success while forking a new
 	// conversation id, having done nothing to the one asked for.
-	h := answering(t, func(context.Context, string, []string) ([]byte, error) {
+	h := answering(t, func(context.Context, string, []string, []string) ([]byte, error) {
 		return []byte(result("918dc472-somewhere-else", "", 0)), nil
+
 	})
 	h.headlessSession("q", "uuid-q", 1)
 
@@ -377,9 +381,10 @@ func TestRequiresArgsIsEnforcedOverHTTP(t *testing.T) {
 
 func TestClearRotatesTheConversationInsteadOfForwarding(t *testing.T) {
 	ran := false
-	h := answering(t, func(context.Context, string, []string) ([]byte, error) {
+	h := answering(t, func(context.Context, string, []string, []string) ([]byte, error) {
 		ran = true
 		return []byte(result("forked", "", 0)), nil
+
 	})
 	sess := h.headlessSession("q", "uuid-before", 4)
 	writeSpec(t, h, "commands:\n  - name: /clear\n    effect: rotate-session\n")
@@ -442,9 +447,10 @@ func TestTheShippedSpecAllowsClearByRotation(t *testing.T) {
 
 func TestAQuerysEffortOverridesTheSessions(t *testing.T) {
 	var seen string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Join(args, " ")
 		return []byte(result("uuid-e", "ok", 1)), nil
+
 	})
 	sess := h.headlessSession("qe", "uuid-e", 1)
 	sess.Effort = claude.High
@@ -463,9 +469,10 @@ func TestAQuerysEffortOverridesTheSessions(t *testing.T) {
 
 func TestAnOmittedEffortKeepsTheSessions(t *testing.T) {
 	var seen string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Join(args, " ")
 		return []byte(result("uuid-k", "ok", 1)), nil
+
 	})
 	sess := h.headlessSession("qk", "uuid-k", 1)
 	sess.Effort = claude.High
@@ -481,9 +488,10 @@ func TestAnOmittedEffortKeepsTheSessions(t *testing.T) {
 
 func TestAQuerysBadEffortIsRefusedBeforeTheTurnRuns(t *testing.T) {
 	invoked := false
-	h := answering(t, func(_ context.Context, _ string, _ []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, _ []string, _ []string) ([]byte, error) {
 		invoked = true
 		return []byte(result("uuid-b", "ok", 1)), nil
+
 	})
 	h.Store.Put(h.headlessSession("qb", "uuid-b", 1))
 
@@ -503,11 +511,12 @@ func TestAQuerysBadEffortIsRefusedBeforeTheTurnRuns(t *testing.T) {
 
 func TestASlashCommandStillTakesTheSessionsEffort(t *testing.T) {
 	var seen, convo string
-	h := answering(t, func(_ context.Context, _ string, args []string) ([]byte, error) {
+	h := answering(t, func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = strings.Join(args, " ")
 		// Echo the session's own conversation, or the command is reported as
 		// having run against a different one.
 		return []byte(result(convo, "ok", 1)), nil
+
 	})
 	h.do("POST", "/sessions", map[string]any{"name": "qc", "effort": claude.High})
 	sess, _ := h.Store.Get("qc")

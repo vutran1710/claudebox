@@ -168,12 +168,13 @@ func TestGarbageIsAnErrorNotAnEmptyAnswer(t *testing.T) {
 
 func TestAMissingConversationFallsBackToCreating(t *testing.T) {
 	var seen [][]string
-	c := New().WithRunner(func(_ context.Context, _ string, args []string) ([]byte, error) {
+	c := New().WithRunner(func(_ context.Context, _ string, args []string, _ []string) ([]byte, error) {
 		seen = append(seen, args)
 		if len(seen) == 1 {
 			return []byte(noConversation + ": abc"), errors.New("exit status 1")
 		}
 		return []byte(realResult), nil
+
 	})
 
 	r, err := c.Query(context.Background(), Request{SessionID: "abc", Prompt: "hi"})
@@ -198,9 +199,10 @@ func TestAMissingConversationFallsBackToCreating(t *testing.T) {
 
 func TestAFreshRequestDoesNotRetry(t *testing.T) {
 	calls := 0
-	c := New().WithRunner(func(_ context.Context, _ string, _ []string) ([]byte, error) {
+	c := New().WithRunner(func(_ context.Context, _ string, _ []string, _ []string) ([]byte, error) {
 		calls++
 		return []byte(noConversation), errors.New("exit status 1")
+
 	})
 	if _, err := c.Query(context.Background(), Request{SessionID: "abc", Prompt: "hi", Fresh: true}); err == nil {
 		t.Error("a failing fresh request reported success")
@@ -213,8 +215,9 @@ func TestAFreshRequestDoesNotRetry(t *testing.T) {
 func TestCancellationIsReportedAsContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	c := New().WithRunner(func(ctx context.Context, _ string, _ []string) ([]byte, error) {
+	c := New().WithRunner(func(ctx context.Context, _ string, _ []string, _ []string) ([]byte, error) {
 		return nil, ctx.Err()
+
 	})
 	_, err := c.Query(ctx, Request{SessionID: "abc", Prompt: "hi", Fresh: true})
 	if !errors.Is(err, context.Canceled) {

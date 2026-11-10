@@ -3,10 +3,13 @@ package api
 import (
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +31,9 @@ type sessionView struct {
 	Model          string   `json:"model,omitempty"`
 	Effort         string   `json:"effort,omitempty"`
 	Context        []string `json:"context,omitempty"`
-	Turns          int      `json:"turns"`
+	// Env lists the names a session was given, never their values.
+	Env   []string `json:"env,omitempty"`
+	Turns int      `json:"turns"`
 	// Priming is present only when a session was created with skills.
 	Priming *primingView `json:"priming,omitempty"`
 }
@@ -46,7 +51,7 @@ func view(s store.Session, running bool) sessionView {
 		Name: s.Name, Dir: s.Dir, Kind: s.Kind, Status: status, Repo: s.Repo, RCURL: s.RCURL,
 		SessionID: s.ClaudeSessionID, SystemPrompt: s.SystemPrompt,
 		PermissionMode: s.PermissionMode, Model: s.Model, Effort: s.Effort,
-		Context: s.Context, Turns: s.Turns,
+		Context: s.Context, Env: slices.Sorted(maps.Keys(s.Env)), Turns: s.Turns,
 	}
 }
 
@@ -59,6 +64,9 @@ type createSessionRequest struct {
 	// Context names knowledge files under the box's ~/.claude to give this
 	// session before its first turn.
 	Context []string `json:"context"`
+	// Env is set on every turn's process. Each name must be one the caller's
+	// role permits, so a key can never set what changes how the box runs.
+	Env map[string]string `json:"env"`
 	// Skills are invoked as turns once the session exists, in the order
 	// given. Each costs a real turn, so respond_within is required with them.
 	Skills        []string       `json:"skills"`
@@ -66,6 +74,8 @@ type createSessionRequest struct {
 }
 
 var sessionName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	var req createSessionRequest
@@ -97,6 +107,17 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	var permitted []string
+	if p := caller(r); p != nil && p.Role != nil {
+		permitted = p.Role.Env
+	}
+	for name, value := range req.Env {
+		if !envName.MatchString(name) || !slices.Contains(permitted, name) || strings.ContainsAny(value, "\x00\n\r") {
+			fail(w, http.StatusBadRequest, fmt.Sprintf(
+				"env %q is not one this key's role may set, or its value holds a newline or NUL", name))
+			return
+		}
 	}
 	for _, name := range req.Skills {
 		if !ValidSkillRef(name) {
@@ -151,6 +172,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		Model:          req.Model,
 		Effort:         req.Effort,
 		Context:        context,
+		Env:            req.Env,
 	}
 	if err := s.Store.Put(sess); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())

@@ -52,6 +52,7 @@ func migrate(db *sql.DB) error {
 		`model TEXT NOT NULL DEFAULT ''`,
 		`effort TEXT NOT NULL DEFAULT ''`,
 		`context TEXT NOT NULL DEFAULT ''`,
+		`env TEXT NOT NULL DEFAULT ''`,
 		`turns INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN ` + col); err != nil &&

@@ -132,6 +132,38 @@ Each entry is reported with the number of files it actually sent, because a
 directory of symlinks into a dotfiles repository once migrated as empty and
 was reported as copied.
 
+## What a session's tools are told
+
+A session's tools (its MCP servers, the scripts they run) often need to know who
+a run is for and which API to read. Written into the prompt, that is left to the
+model; ClaudeBox passes it as environment instead, in three layers:
+
+```yaml
+# ~/.config/cbx/cbx.yaml
+env:                         # the box's own, for every session
+  API_URL: https://api.example.com
+roles:
+  reporter:
+    session_env: [TENANT_ID] # names a session may set when it is created
+    query_env: [USER_KEY]    # names a query may set for its own turn
+```
+
+```
+POST /sessions          {"name": "t-1", "env": {"TENANT_ID": "12"}}
+POST /sessions/t-1/query {"prompt": "...", "env": {"USER_KEY": "uk_..."}}
+```
+
+- A session's env is stored with it and set on every turn. A query's env is set
+  on that turn only and never stored, which is where a credential that expires
+  belongs.
+- A name its role does not list is refused with `400`, so no caller can set
+  `PATH` or `LD_PRELOAD`, and a query cannot change a name its session set.
+- The box's `env` is read every turn, so changing it needs no new sessions; a
+  session's or a query's value wins over it.
+- Reading a session shows the names it was given, never the values.
+
+Why it works this way: [docs/api-server.md](docs/api-server.md#env-a-sessions-tools-read).
+
 ## Testing
 
 ```bash

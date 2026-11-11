@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,6 +52,9 @@ func (rw *respondWithin) UnmarshalJSON(b []byte) error {
 
 type queryRequest struct {
 	Prompt string `json:"prompt"`
+	// Env sets variables for this turn only, from the names the key's role
+	// lists under query_env. The session's own env is fixed at creation.
+	Env map[string]string `json:"env"`
 	// Artifacts are the files this query is expected to produce. Only these
 	// become fetchable; everything else in the session directory stays
 	// private, which is the whole point of declaring them.
@@ -98,6 +102,9 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
+	if refusedEnv(w, req.Env, caller(r).role().QueryEnv) {
+		return
+	}
 	// Checked before the turn runs, so a bad level costs a round trip rather
 	// than a session's worth of work at the wrong effort.
 	if !claude.ValidEffort(req.Effort) {
@@ -121,6 +128,11 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	env, err := s.turnEnv(sess, req.Env)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		SettingsPath:   settings,
@@ -129,6 +141,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
+		Env:            env,
 		Effort:         cmp.Or(req.Effort, sess.Effort),
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Prompt, declared)
@@ -195,6 +208,11 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	env, err := s.turnEnv(sess, nil)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.run(w, sess, claude.Request{
 		Dir:            sess.Dir,
 		SettingsPath:   settings,
@@ -203,6 +221,7 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:   sess.SystemPrompt,
 		PermissionMode: sess.PermissionMode,
 		Model:          sess.Model,
+		Env:            env,
 		Effort:         sess.Effort,
 		Fresh:          sess.Turns == 0,
 	}, wait, req.Command, declared)
@@ -349,3 +368,17 @@ func (s *Server) cancel(id string) bool {
 }
 
 func newJobID() string { return "j_" + uuid.NewString() }
+
+// turnEnv is what one turn's process gets: the box's env, read from its config
+// each turn, then the query's env, then the session's own, which win.
+func (s *Server) turnEnv(sess *store.Session, turn map[string]string) (map[string]string, error) {
+	cfg, err := boxconfig.Load(s.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	env := map[string]string{}
+	maps.Copy(env, cfg.Env)
+	maps.Copy(env, turn)
+	maps.Copy(env, sess.Env)
+	return env, nil
+}

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"maps"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -20,7 +21,8 @@ func open(t *testing.T) *Store {
 func TestPutThenGetRoundTrips(t *testing.T) {
 	s := open(t)
 	want := Session{Name: "master", Dir: "/workspace/master", Repo: "owner/repo",
-		RCURL: "https://claude.ai/code/session_x", CreatedAt: time.Unix(1700000000, 0)}
+		RCURL: "https://claude.ai/code/session_x", CreatedAt: time.Unix(1700000000, 0),
+		Env: map[string]string{"TENANT_ID": "12"}}
 	if err := s.Put(want); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -28,7 +30,7 @@ func TestPutThenGetRoundTrips(t *testing.T) {
 	if err != nil || got == nil {
 		t.Fatalf("Get: %v, %v", got, err)
 	}
-	if got.Dir != want.Dir || got.Repo != want.Repo || got.RCURL != want.RCURL {
+	if got.Dir != want.Dir || got.Repo != want.Repo || got.RCURL != want.RCURL || !maps.Equal(got.Env, want.Env) {
 		t.Errorf("got %+v, want %+v", *got, want)
 	}
 	if !got.CreatedAt.Equal(want.CreatedAt) {

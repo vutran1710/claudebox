@@ -56,6 +56,12 @@ type Role struct {
 	// unfinished role should not be an unrestricted one. `deny: []` denies
 	// nothing, and has to be written on purpose.
 	Deny []string `yaml:"deny" json:"deny"`
+	// SessionEnv names the variables this role's keys may set on a session they
+	// create. Absent permits none.
+	SessionEnv []string `yaml:"session_env" json:"session_env,omitempty"`
+	// QueryEnv names the variables a query may set for its own turn only, such
+	// as a credential that expires before the session does. Absent permits none.
+	QueryEnv []string `yaml:"query_env" json:"query_env,omitempty"`
 }
 
 type Command struct {
@@ -73,6 +79,9 @@ type Config struct {
 	// before the rename keeps working rather than locking every caller out.
 	Permissions map[string]Role `yaml:"permissions" json:"-"`
 	Commands    []Command       `yaml:"commands" json:"commands"`
+	// Env is set on every turn on this box, under the session's own, such as the
+	// API the tools read. Re-read each turn, like the rest of this file.
+	Env map[string]string `yaml:"env" json:"env,omitempty"`
 
 	// path is where this was read from, so an error names the file somebody
 	// has to edit rather than the one they probably have not got.

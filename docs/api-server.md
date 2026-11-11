@@ -92,13 +92,14 @@ GET    /commands                         the slash-command allowlist
 PUT    /commands                         replace it (YAML or JSON)
 
 POST   /sessions                         {name, repo?, system_prompt?,
-                                          model?, effort?,
+                                          model?, effort?, env?,
                                           context?, skills?, respond_within?}
 GET    /sessions                         both kinds, reconciled against tmux
 GET    /sessions/{name}                  dir, kind, status, session_id, turns
 DELETE /sessions/{name}                  forget it
 
-POST   /sessions/{name}/query            {prompt, respond_within} → 200 | 202 job
+POST   /sessions/{name}/query            {prompt, respond_within, env?}
+                                          → 200 | 202 job
 GET    /jobs/{id}?respond_within=        poll, or long-poll, a query in flight
 DELETE /jobs/{id}                        cancel a running query, or discard a result
 
@@ -171,6 +172,47 @@ session is fixed when it is created.
 Loading knowledge by invoking a skill works too, and costs more: measured at
 four turns to read one file, and the content lands in conversation history
 where compaction can eventually drop it. `context` costs nothing and survives.
+
+### Env a session's tools read
+
+A session's tools often need to know who a run is for and which API to read: an
+MCP server putting a tenant on every call it makes, a script reading a token.
+Writing that into the prompt asks the model to repeat it faithfully on every
+call, which is a hope rather than a boundary. Claude Code starts its MCP servers
+as children of the turn's process, so environment reaches them without the
+model ever handling it.
+
+There are three layers. Every turn's process gets the box's first, so a session's or a query's value wins over it; a session's and a query's names never overlap:
+
+| Layer | Set by | Lives | Names allowed |
+|---|---|---|---|
+| the box's `env:` in `cbx.yaml` | whoever has ssh | read every turn | any |
+| a session's `env` | `POST /sessions` | stored with the session | its role's `session_env` |
+| a query's `env` | `POST /sessions/{name}/query` | that turn only, never stored | its role's `query_env` |
+
+**Two lists rather than one, because they answer different questions.** A
+session's env says what the conversation is about, such as its tenant, and is
+fixed at creation like the model and the permission mode, for the reason above:
+everything that shapes a session is fixed when it is created. A query's env says
+who is asking now, such as a user's key that expires before the session does.
+Storing that would put a credential in `sessions.db` in the clear and keep it
+past its life, so it is set on one turn's process and dropped. A query may not
+change a name its session set: the conversation's history was built under that
+value.
+
+**The role names what may be set.** The box's own process environment carries
+`PATH`, `HOME` and `IS_SANDBOX`; a caller able to set any name could set
+`PATH` or `LD_PRELOAD` on every turn. A name the role does not list, a lowercase
+or dashed name, and a value holding a newline or NUL are refused with `400`
+rather than dropped, since the caller expects something it would not get.
+`IS_SANDBOX` is appended last so nothing can undo it.
+
+**The box's own layer is re-read every turn**, like the rest of `cbx.yaml`, so
+pointing the box at another API needs no new sessions. A session's or a query's
+value wins over it.
+
+**Names, never values, are shown.** `GET /sessions/{name}` lists the env names
+a session was given; the values may be credentials.
 
 ### Skills can be run into a session as it is created
 
@@ -525,7 +567,8 @@ that stops early leaks which label was hit.
 ### Keys are rows; roles are a file
 
 A key is a row in `sessions.db` — label, value, the role it was issued against,
-and when. A role is a named set of deny rules in `~/.config/cbx/cbx.yaml`.
+and when. A role is a named set of deny rules in `~/.config/cbx/cbx.yaml`, and
+the env names its keys may set ([Env a session's tools read](#env-a-sessions-tools-read)).
 
 ```
 cbx api-key add backend --role reporter

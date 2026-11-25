@@ -211,6 +211,17 @@ rather than dropped, since the caller expects something it would not get.
 pointing the box at another API needs no new sessions. A session's or a query's
 value wins over it.
 
+**A session can take a named entry whole.** One caller reached from several
+places, each wanting its own values, keeps an entry per place in the box's env
+map, `envars.yaml` beside `cbx.yaml`: written by `PUT /envs/{name}`, removed by
+`DELETE /envs/{name}`, listed by `GET /envs` by names only. A session created with
+`env_from` copies the entry into its own env then, because everything that shapes
+a session is fixed at creation; its names are held to the role's `session_env` as
+a session's own are. The session takes the union of the entry and its own env,
+its own value winning on a name in both, so a caller can take an entry and still
+set one value differently. It is its own file because the API writes it: a write
+can never touch the roles.
+
 **Names, never values, are shown.** `GET /sessions/{name}` lists the env names
 a session was given; the values may be credentials.
 
@@ -643,7 +654,7 @@ whoever started it, restarts if it dies, and is never attached to a terminal.
 
 ```
 droplet          systemd unit, Type=simple   ← cbx-setuptool installs it
-Railway/Docker   CMD ["cbx", "serve"]        ← PID 1 is the service
+Docker           CMD ["cbx", "serve"]        ← PID 1 is the service
 ad hoc, no init  cbx serve --detach          ← nothing else is watching
 ```
 
@@ -654,7 +665,7 @@ restart-on-failure, start-on-boot and log capture, none of which `--detach` can.
 
 **`--detach` must never be a container's `CMD`.** That is a constraint, not a
 preference: a PID 1 that forks and exits takes the container down with it, so
-the Railway row stays foreground permanently.
+the Docker row stays foreground permanently.
 
 ### What `--detach` has to get right
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vutran1710/claudebox/internal/boxconfig"
 	"github.com/vutran1710/claudebox/internal/claude"
 	"github.com/vutran1710/claudebox/internal/store"
 	"github.com/vutran1710/claudebox/internal/workspace"
@@ -67,6 +68,9 @@ type createSessionRequest struct {
 	// Env is set on every turn's process. Each name must be one the caller's
 	// role permits, so a key can never set what changes how the box runs.
 	Env map[string]string `json:"env"`
+	// EnvFrom names an entry of the box's env map whose variables the session is created
+	// with as well, copied in now; each must be one the caller's role permits, as Env's are.
+	EnvFrom *string `json:"env_from"`
 	// Skills are invoked as turns once the session exists, in the order
 	// given. Each costs a real turn, so respond_within is required with them.
 	Skills        []string       `json:"skills"`
@@ -124,6 +128,30 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if refusedEnv(w, req.Env, caller(r).role().SessionEnv) {
 		return
 	}
+	// The entry env_from names is copied in, so a later edit of it reaches only sessions made after;
+	// the session's own env is laid over it, so a name in both takes the session's value.
+	env := req.Env
+	if req.EnvFrom != nil {
+		if *req.EnvFrom == "" {
+			fail(w, http.StatusBadRequest, "env_from names no entry; leave it out to take none")
+			return
+		}
+		envs, err := boxconfig.LoadEnvars(s.EnvarsPath)
+		if err != nil {
+			fail(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		entry, ok := envs[*req.EnvFrom]
+		if !ok {
+			fail(w, http.StatusBadRequest, fmt.Sprintf("no entry %q in %s", *req.EnvFrom, s.EnvarsPath))
+			return
+		}
+		if refusedEnv(w, entry, caller(r).role().SessionEnv) {
+			return
+		}
+		env = maps.Clone(entry)
+		maps.Copy(env, req.Env)
+	}
 	for _, name := range req.Skills {
 		if !ValidSkillRef(name) {
 			fail(w, http.StatusBadRequest, fmt.Sprintf(
@@ -177,7 +205,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		Model:          req.Model,
 		Effort:         req.Effort,
 		Context:        context,
-		Env:            req.Env,
+		Env:            env,
 	}
 	if err := s.Store.Put(sess); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())

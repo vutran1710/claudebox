@@ -30,6 +30,7 @@ tags:
   - name: queries
   - name: jobs
   - name: commands
+  - name: envs
   - name: artifacts
 
 paths:
@@ -134,6 +135,62 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /envs:
+    get:
+      tags: [envs]
+      summary: List the box's env map
+      description: |
+        Each entry by name, with the variables it sets by name. Values are never
+        shown, as a session's env values are not. Read from `envars.yaml`, beside
+        the box's config, on every request.
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnvMap" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /envs/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+        example: preview.1234
+    put:
+      tags: [envs]
+      summary: Add or replace an entry
+      description: |
+        Sets the entry to exactly these variables, so a repeated deploy is
+        harmless. Each name is upper case, each value free of newline and NUL; an
+        entry sets at least one. A malformed `envars.yaml` is refused rather than
+        overwritten. Which of an entry's names a session may take is still its
+        key's role's `session_env`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvEntry" }
+      responses:
+        "200":
+          description: Written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  env: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [envs]
+      summary: Remove an entry
+      description: Sessions already made from it keep the values they were given.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /sessions:
     post:
       tags: [sessions]
@@ -559,6 +616,16 @@ components:
             as is a value holding a newline or NUL.
           additionalProperties: { type: string }
           example: { TENANT_ID: "12", API_URL: "https://api.example.com" }
+        env_from:
+          type: string
+          description: |
+            An entry of the box's env map (`/envs`) whose variables the session
+            is created with as well. Copied in at creation: a later edit or
+            delete of the entry reaches only sessions made after it. The session
+            takes the union of the entry and `env`, `env`'s value winning on a
+            name in both. Each name must be one the calling key's role may set;
+            an unknown or empty entry is refused.
+          example: preview.1234
         skills:
           type: array
           description: |
@@ -578,6 +645,23 @@ components:
           oneOf:
             - type: number
             - type: string
+
+    EnvEntry:
+      type: object
+      description: The variables an entry sets, by name.
+      minProperties: 1
+      additionalProperties: { type: string }
+      example: { API_URL: "https://api-1234.example.com" }
+
+    EnvMap:
+      type: object
+      properties:
+        path: { type: string, description: Where the entries are kept. }
+        envs:
+          type: object
+          description: Each entry's variable names.
+          additionalProperties: { type: array, items: { type: string } }
+          example: { prod: [API_URL], preview.1234: [API_URL] }
 
     Priming:
       type: object

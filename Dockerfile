@@ -9,14 +9,14 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 COPY skills /root/.claude/skills
 COPY CLAUDE.md /root/CLAUDE.md
 
-RUN mkdir -p /workspace /root/.claude/skills
+RUN mkdir -p /root/workspace /root/.claude/skills
 
-WORKDIR /workspace
+WORKDIR /root/workspace
 
 # cbx binary — copy pre-built or download at runtime
 COPY cbx /usr/local/bin/cbx
 RUN chmod +x /usr/local/bin/cbx
 
-EXPOSE 22 6080
+EXPOSE 8091
 
-CMD ["cbx", "setup"]
+CMD ["cbx", "serve", "--addr", "0.0.0.0:8091"]

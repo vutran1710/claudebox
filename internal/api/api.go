@@ -45,6 +45,8 @@ type Server struct {
 	Tmux   *tmux.Client
 
 	ConfigPath string
+	// EnvarsPath is the box's env map, which env_from reads and /envs writes.
+	EnvarsPath string
 	Home       string
 	JobTTL     time.Duration
 	// ArtifactTTL is how long a declared output stays fetchable; zero means
@@ -76,6 +78,7 @@ func New(st *store.Store) *Server {
 		Claude:     claude.New(),
 		Tmux:       tmux.New(),
 		ConfigPath: boxconfig.DefaultPath(),
+		EnvarsPath: boxconfig.DefaultEnvarsPath(),
 		Home:       home,
 		JobTTL:     DefaultJobTTL,
 		Version:    "dev",
@@ -110,6 +113,10 @@ func (s *Server) routes() []route {
 
 		{Pattern: "GET /commands", Handler: s.getCommands},
 		{Pattern: "PUT /commands", Handler: s.putCommands},
+
+		{Pattern: "GET /envs", Handler: s.getEnvars},
+		{Pattern: "PUT /envs/{name}", Handler: s.putEnvar},
+		{Pattern: "DELETE /envs/{name}", Handler: s.deleteEnvar},
 
 		{Pattern: "POST /sessions", Handler: s.createSession},
 		{Pattern: "GET /sessions", Handler: s.listSessions},

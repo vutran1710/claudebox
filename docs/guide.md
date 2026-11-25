@@ -117,7 +117,8 @@ DELETE /envs/preview.1234
 - The box's `env` is read every turn; a session's or a query's value wins over it.
 - The env map serves a caller reached from several places, one entry per
   deployment say: `env_from` copies an entry into the session at creation, held to
-  the role's `session_env`, and a name in both the entry and `env` is refused.
+  the role's `session_env`. The session takes the union of the entry and its own
+  `env`, its own value winning on a name in both.
 - Reading a session or the map shows names, never values.
 
 Why it works this way: [docs/api-server.md](api-server.md#env-a-sessions-tools-read).

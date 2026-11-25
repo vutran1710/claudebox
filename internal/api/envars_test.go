@@ -85,17 +85,23 @@ func TestWritingAnEntryRefuses(t *testing.T) {
 }
 
 func TestASessionFromAnEntryCarriesItsValuesToEveryTurn(t *testing.T) {
+	entry := "API_URL=https://api-1234.example.com"
 	cases := []struct {
 		name  string
+		own   map[string]string
 		after func(h *harness)
+		want  string
 	}{
-		{"its turns run with the entry's values", func(*harness) {}},
-		{"an edit to the entry after creation does not reach it", func(h *harness) {
+		{"its turns run with the entry's values", map[string]string{"TENANT_ID": "12"}, func(*harness) {}, entry},
+		{"the session's own env overrides the entry's value",
+			map[string]string{"TENANT_ID": "12", "API_URL": "https://mine.example.com"}, func(*harness) {},
+			"API_URL=https://mine.example.com"},
+		{"an edit to the entry after creation does not reach it", map[string]string{"TENANT_ID": "12"}, func(h *harness) {
 			h.do("PUT", "/envs/preview.1234", map[string]string{"API_URL": "https://moved.example.com"})
-		}},
-		{"a delete of the entry after creation does not reach it", func(h *harness) {
+		}, entry},
+		{"a delete of the entry after creation does not reach it", map[string]string{"TENANT_ID": "12"}, func(h *harness) {
 			h.do("DELETE", "/envs/preview.1234", nil)
-		}},
+		}, entry},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -104,14 +110,14 @@ func TestASessionFromAnEntryCarriesItsValuesToEveryTurn(t *testing.T) {
 			h := answering(t, capturingEnv(&seen))
 			h.do("PUT", "/envs/preview.1234", map[string]string{"API_URL": "https://api-1234.example.com"})
 			made := h.do("POST", "/sessions", map[string]any{
-				"name": "from-entry", "env_from": "preview.1234", "env": map[string]string{"TENANT_ID": "12"},
+				"name": "from-entry", "env_from": "preview.1234", "env": c.own,
 			})
 
 			c.after(h)
 			h.do("POST", "/sessions/from-entry/query", map[string]any{"prompt": "hi", "respond_within": "10s"})
 			shown := h.do("GET", "/sessions/from-entry", nil)
 
-			want := []string{"API_URL=https://api-1234.example.com", "TENANT_ID=12"}
+			want := []string{c.want, "TENANT_ID=12"}
 			if made.Code != http.StatusCreated || len(seen) != 1 || !slices.Equal(seen[0], want) {
 				t.Errorf("create %d %s; turns ran with %q, want %q", made.Code, made.Body, seen, want)
 			}
@@ -134,9 +140,6 @@ func TestCreateSessionFromAnEntryRefuses(t *testing.T) {
 		{"an empty env_from", "", map[string]any{"env_from": ""}, http.StatusBadRequest, "env_from"},
 		{"an entry naming a variable outside the role's session_env", "stg:\n  SECRET_TOKEN: x\n",
 			map[string]any{"env_from": "stg"}, http.StatusBadRequest, "SECRET_TOKEN"},
-		{"a variable both in the entry and in the session's own env", "stg:\n  API_URL: https://stg.example.com\n",
-			map[string]any{"env_from": "stg", "env": map[string]string{"API_URL": "https://mine.example.com"}},
-			http.StatusBadRequest, "API_URL"},
 		{"a malformed envars.yaml", "stg: [not, a, map\n", map[string]any{"env_from": "stg"},
 			http.StatusInternalServerError, "envars.yaml"},
 	}

@@ -621,9 +621,10 @@ components:
           description: |
             An entry of the box's env map (`/envs`) whose variables the session
             is created with as well. Copied in at creation: a later edit or
-            delete of the entry reaches only sessions made after it. Each name
-            must be one the calling key's role may set, and none may also be in
-            `env`; an unknown or empty entry is refused.
+            delete of the entry reaches only sessions made after it. The session
+            takes the union of the entry and `env`, `env`'s value winning on a
+            name in both. Each name must be one the calling key's role may set;
+            an unknown or empty entry is refused.
           example: preview.1234
         skills:
           type: array

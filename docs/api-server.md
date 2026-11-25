@@ -217,9 +217,10 @@ map, `envars.yaml` beside `cbx.yaml`: written by `PUT /envs/{name}`, removed by
 `DELETE /envs/{name}`, listed by `GET /envs` by names only. A session created with
 `env_from` copies the entry into its own env then, because everything that shapes
 a session is fixed at creation; its names are held to the role's `session_env` as
-a session's own are, and a name in both is refused rather than one silently
-winning. It is its own file because the API writes it: a write can never touch
-the roles.
+a session's own are. The session takes the union of the entry and its own env,
+its own value winning on a name in both, so a caller can take an entry and still
+set one value differently. It is its own file because the API writes it: a write
+can never touch the roles.
 
 **Names, never values, are shown.** `GET /sessions/{name}` lists the env names
 a session was given; the values may be credentials.

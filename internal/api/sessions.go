@@ -128,7 +128,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if refusedEnv(w, req.Env, caller(r).role().SessionEnv) {
 		return
 	}
-	// The entry env_from names is copied in, so a later edit of it reaches only sessions made after.
+	// The entry env_from names is copied in, so a later edit of it reaches only sessions made after;
+	// the session's own env is laid over it, so a name in both takes the session's value.
 	env := req.Env
 	if req.EnvFrom != nil {
 		if *req.EnvFrom == "" {
@@ -149,13 +150,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		env = maps.Clone(entry)
-		for name, value := range req.Env {
-			if _, both := entry[name]; both {
-				fail(w, http.StatusBadRequest, fmt.Sprintf("%q is set by entry %q and by this session's own env", name, *req.EnvFrom))
-				return
-			}
-			env[name] = value
-		}
+		maps.Copy(env, req.Env)
 	}
 	for _, name := range req.Skills {
 		if !ValidSkillRef(name) {

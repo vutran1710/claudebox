@@ -136,7 +136,8 @@ was reported as copied.
 
 A session's tools (its MCP servers, the scripts they run) often need to know who
 a run is for and which API to read. Written into the prompt, that is left to the
-model; ClaudeBox passes it as environment instead, in three layers:
+model; ClaudeBox passes it as environment instead, in three layers, and a named
+entry a session can take whole:
 
 ```yaml
 # ~/.config/cbx/cbx.yaml
@@ -144,13 +145,24 @@ env:                         # the box's own, for every session
   API_URL: https://api.example.com
 roles:
   reporter:
-    session_env: [TENANT_ID] # names a session may set when it is created
+    session_env: [TENANT_ID, API_URL] # names a session, or an entry it takes, may set
     query_env: [USER_KEY]    # names a query may set for its own turn
 ```
 
+```yaml
+# ~/.config/cbx/envars.yaml — written through the API, one entry per place
+prod:
+  API_URL: https://api.example.com
+preview.1234:
+  API_URL: https://api-1234.example.com
 ```
-POST /sessions          {"name": "t-1", "env": {"TENANT_ID": "12"}}
+
+```
+PUT  /envs/preview.1234  {"API_URL": "https://api-1234.example.com"}
+POST /sessions           {"name": "t-1", "env": {"TENANT_ID": "12"}}
+POST /sessions           {"name": "t-2", "env_from": "preview.1234", "env": {"TENANT_ID": "12"}}
 POST /sessions/t-1/query {"prompt": "...", "env": {"USER_KEY": "uk_..."}}
+DELETE /envs/preview.1234
 ```
 
 - A session's env is stored with it and set on every turn. A query's env is set
@@ -161,6 +173,11 @@ POST /sessions/t-1/query {"prompt": "...", "env": {"USER_KEY": "uk_..."}}
 - The box's `env` is read every turn, so changing it needs no new sessions; a
   session's or a query's value wins over it.
 - Reading a session shows the names it was given, never the values.
+- A caller reached from several places, such as one per deployment, can keep a
+  named entry for each in the box's env map (`~/.config/cbx/envars.yaml`), written
+  with `PUT /envs/{name}` and removed with `DELETE /envs/{name}`. A session takes
+  one whole with `"env_from": "<name>"`, copied in at creation and held to its
+  role's `session_env` like its own env.
 
 Why it works this way: [docs/api-server.md](docs/api-server.md#env-a-sessions-tools-read).
 

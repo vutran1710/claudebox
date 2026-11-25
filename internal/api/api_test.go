@@ -75,6 +75,7 @@ func answering(t *testing.T, run claude.Runner) *harness {
 		Claude:     claude.New().WithRunner(run),
 		Tmux:       tmux.New().WithRunner(func(string) (string, error) { return "", fmt.Errorf("no tmux") }),
 		ConfigPath: configPath,
+		EnvarsPath: filepath.Join(t.TempDir(), "envars.yaml"),
 		Home:       home,
 		JobTTL:     time.Hour,
 		Version:    "test",

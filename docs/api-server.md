@@ -211,6 +211,16 @@ rather than dropped, since the caller expects something it would not get.
 pointing the box at another API needs no new sessions. A session's or a query's
 value wins over it.
 
+**A session can take a named entry whole.** One caller reached from several
+places, each wanting its own values, keeps an entry per place in the box's env
+map, `envars.yaml` beside `cbx.yaml`: written by `PUT /envs/{name}`, removed by
+`DELETE /envs/{name}`, listed by `GET /envs` by names only. A session created with
+`env_from` copies the entry into its own env then, because everything that shapes
+a session is fixed at creation; its names are held to the role's `session_env` as
+a session's own are, and a name in both is refused rather than one silently
+winning. It is its own file because the API writes it: a write can never touch
+the roles.
+
 **Names, never values, are shown.** `GET /sessions/{name}` lists the env names
 a session was given; the values may be credentials.
 

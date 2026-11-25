@@ -193,3 +193,6 @@ jobs:
           echo "Setup installs all tools, authenticates Claude, starts VNC + Chrome," >> "$GITHUB_STEP_SUMMARY"
           echo "and launches the **master Claude session** with a Remote Control URL." >> "$GITHUB_STEP_SUMMARY"
           echo "Open that URL on your phone to start." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Env map" >> "$GITHUB_STEP_SUMMARY"
+          echo "The box starts with an empty env map, \`~/.config/cbx/envars.yaml\`. A caller reached from several places adds an entry per place through the API (\`PUT /envs/{name}\`, removed with \`DELETE /envs/{name}\`), and a session takes one whole with \`env_from\`; see docs/api-server.md." >> "$GITHUB_STEP_SUMMARY"

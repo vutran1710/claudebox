@@ -653,7 +653,7 @@ whoever started it, restarts if it dies, and is never attached to a terminal.
 
 ```
 droplet          systemd unit, Type=simple   ← cbx-setuptool installs it
-Railway/Docker   CMD ["cbx", "serve"]        ← PID 1 is the service
+Docker           CMD ["cbx", "serve"]        ← PID 1 is the service
 ad hoc, no init  cbx serve --detach          ← nothing else is watching
 ```
 
@@ -664,7 +664,7 @@ restart-on-failure, start-on-boot and log capture, none of which `--detach` can.
 
 **`--detach` must never be a container's `CMD`.** That is a constraint, not a
 preference: a PID 1 that forks and exits takes the container down with it, so
-the Railway row stays foreground permanently.
+the Docker row stays foreground permanently.
 
 ### What `--detach` has to get right
 

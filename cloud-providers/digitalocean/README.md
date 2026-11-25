@@ -12,7 +12,8 @@
 1. Create an API token from [DigitalOcean API settings](https://cloud.digitalocean.com/account/api/tokens)
 2. Add the secrets above to your GitHub repo (Settings → Secrets → Actions)
 3. Go to Actions → **"Deploy to DigitalOcean"** → Run workflow
-4. SSH in: `ssh root@<droplet-ip>`
+4. From your laptop, set it up and start the always-on session:
+   `cbx-setuptool setup --host root@<droplet-ip> --with-api`, then `ssh root@<droplet-ip> cbx new master`
 
 ## Manual Deploy
 

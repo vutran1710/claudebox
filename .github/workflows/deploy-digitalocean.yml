@@ -88,15 +88,13 @@ jobs:
             sleep 10
           fi
 
+      # Only the SSH key: everything else is cbx-setuptool's, run from a laptop against the
+      # droplet, which installs the cbx matching its own version.
       - name: Create cloud-init user data
         env:
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          REPO: ${{ github.repository }}
-          REF: ${{ github.ref_name }}
         run: |
           B64_SSH_KEY=$(printf '%s' "$SSH_PUBLIC_KEY" | base64 -w0)
-          B64_GH_TOKEN=$(printf '%s' "${GH_TOKEN:-}" | base64 -w0)
 
           cat > /tmp/cloud-init.yml <<'CLOUD_INIT_EOF'
           #cloud-config
@@ -105,22 +103,9 @@ jobs:
               mkdir -p /root/.ssh
               echo "$(echo '__B64_SSH_KEY__' | base64 -d)" >> /root/.ssh/authorized_keys
               chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
-              curl -sL "https://github.com/__REPO__/releases/latest/download/cbx-linux-amd64" \
-                -o /usr/local/bin/cbx
-              chmod +x /usr/local/bin/cbx
-              git clone --branch __REF__ "https://github.com/__REPO__.git" /opt/claudebox
-              GH_TOKEN="$(echo '__B64_GH_TOKEN__' | base64 -d)"
-              if [ -n "$GH_TOKEN" ]; then
-                printf '%s' "$GH_TOKEN" > /root/.gh-token
-                chmod 600 /root/.gh-token
-              fi
-              touch /root/.cbx-ready
           CLOUD_INIT_EOF
 
           sed -i "s|__B64_SSH_KEY__|${B64_SSH_KEY}|" /tmp/cloud-init.yml
-          sed -i "s|__B64_GH_TOKEN__|${B64_GH_TOKEN}|" /tmp/cloud-init.yml
-          sed -i "s|__REPO__|${REPO}|" /tmp/cloud-init.yml
-          sed -i "s|__REF__|${REF}|" /tmp/cloud-init.yml
 
       - name: Create Droplet
         run: |
@@ -176,23 +161,22 @@ jobs:
 
       - name: Wait for cloud-init to finish
         run: |
-          echo "Waiting 60s for cloud-init to download cbx and clone repo..."
+          echo "Waiting 60s for cloud-init to install the SSH key..."
           sleep 60
 
       - name: Print SSH access info
         env:
           IP: ${{ steps.droplet-ip.outputs.ip }}
         run: |
-          echo "## ClaudeBox Ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Droplet ready" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Run setup (one-time):" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set it up from your laptop with [cbx-setuptool](https://github.com/${{ github.repository }}/releases/latest), then start the always-on session:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "ssh -t root@${IP} 'cbx setup'" >> "$GITHUB_STEP_SUMMARY"
+          echo "cbx-setuptool setup --host root@${IP} --with-api" >> "$GITHUB_STEP_SUMMARY"
+          echo "ssh root@${IP} cbx new master" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Setup installs all tools, authenticates Claude, starts VNC + Chrome," >> "$GITHUB_STEP_SUMMARY"
-          echo "and launches the **master Claude session** with a Remote Control URL." >> "$GITHUB_STEP_SUMMARY"
-          echo "Open that URL on your phone to start." >> "$GITHUB_STEP_SUMMARY"
+          echo "\`setup\` installs the base packages, Claude Code and the matching \`cbx\`, signs Claude Code in, and with \`--with-api\` runs the API as a service. \`cbx new master\` prints a Remote Control URL: open it on your phone." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Env map" >> "$GITHUB_STEP_SUMMARY"
           echo "The box starts with an empty env map, \`~/.config/cbx/envars.yaml\`. A caller reached from several places adds an entry per place through the API (\`PUT /envs/{name}\`, removed with \`DELETE /envs/{name}\`), and a session takes one whole with \`env_from\`; see docs/api-server.md." >> "$GITHUB_STEP_SUMMARY"
